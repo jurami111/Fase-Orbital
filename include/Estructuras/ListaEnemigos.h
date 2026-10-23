@@ -40,7 +40,7 @@ class  ListaEnemigos {
         ListaEnemigos& operator=(const ListaEnemigos&) = delete;
 
         NodoEnemigoPtr InsertarFinal(EnemigoPtr& enemigo); //Le pasamos un puntero a enemigo y lo insertamos al final de la lista
-        NodoEnemigoPtr insertarDespues(NodoEnemigoPtr indice, const EnemigoPtr& enemigo); //Insertamos un enemigo despues de un nodo dado
+        NodoEnemigoPtr InsertarDespues(NodoEnemigoPtr indice, const EnemigoPtr& enemigo); //Insertamos un enemigo despues de un nodo dado
         NodoEnemigoPtr Eliminar(NodoEnemigoPtr indice); //Eliminamos un nodo de la lista
         NodoEnemigoPtr Buscar(int id); //Buscamos un enemigo por su id
         NodoEnemigoPtr primero(); //Primer enemigo de la lista

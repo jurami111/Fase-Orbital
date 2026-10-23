@@ -15,25 +15,35 @@ using NodoSpawnPtr = NodoSpawn*;
 struct NodoSpawn {
     SpawnPtr dato;
     NodoSpawnPtr siguiente;
+    NodoSpawnPtr anterior;
 };
 
-class Spawn{
+class ColaSpawn {
     private:
         NodoSpawnPtr primerNodo;
         NodoSpawnPtr ultimoNodo;
         int cantidad;
 
     public:
-        Spawn(); //Constructor
-        ~Spawn();//Destructor
+        ColaSpawn(); //Constructor
+        ~ColaSpawn();//Destructor
 
         // Prohibir copia (Regla de tres)
-        Spawn(const Spawn&) = delete;
-        Spawn& operator=(const Spawn&) = delete;
+        ColaSpawn(const ColaSpawn& otra);
+        ColaSpawn& operator=(const ColaSpawn& otra);
 
-        NodoSpawnPtr Encolar(SpawnPtr& spawn); //Le pasamos un puntero a spawn y lo insertamos al final de la lista
-        NodoSpawnPtr Desencolar(); //Eliminamos el primer spawn de la lista
+        NodoSpawnPtr Encolar(SpawnPtr& spawn); //Inserta una copia del dato al final
+        NodoSpawnPtr Desencolar(); //Elimina el frente y devuelve el nuevo frente
+        bool Desencolar(DatosSpawn& salida); //Retira el frente y copia su dato en salida
         NodoSpawnPtr primero(); //Primer spawn de la lista
-        bool isVacia(); //Verificamos si la lista esta vacia
+        const DatosSpawn* VerFrente() const;
+        bool isVacia() const; //Verificamos si la lista esta vacia
+        int tamano() const;
 
+    private:
+        NodoSpawnPtr EncolarCopia(const DatosSpawn& spawn);
+        void Limpiar();
+        void Intercambiar(ColaSpawn& otra);
 };
+
+using Spawn = ColaSpawn;

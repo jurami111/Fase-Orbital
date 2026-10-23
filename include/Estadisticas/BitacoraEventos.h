@@ -41,6 +41,7 @@ class BitacoraEventos {
         // Prohibir copia (Regla de tres)
         BitacoraEventos(const BitacoraEventos&) = delete;
         BitacoraEventos& operator=(const BitacoraEventos&) = delete;
+        
         NodoEventoPtr AgregarFinal(EventoPtr& evento); //Le pasamos un puntero a evento y lo insertamos al final de la lista
         NodoEventoPtr Eliminar(NodoEventoPtr indice); //Eliminamos un nodo de la lista
         NodoEventoPtr BuscarPorJugadorYOleada(JugadorPtr jugador, int oleada); //Buscamos un evento por su jugador y oleada
