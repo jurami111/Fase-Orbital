@@ -1,11 +1,18 @@
 #include "Historial.h"
 #include <cmath>
+#include <cstring>
+#include <limits>
 Historial::Historial() {
     primerNodo = nullptr;
+    ultimoNodo = nullptr;
     cantidad = 0;
 }
 
 Historial::~Historial() {
+    Limpiar();
+}
+
+void Historial::Limpiar() {
     NodoHistorialCSVPtr actual = primerNodo;
     while (actual != nullptr) {
         NodoHistorialCSVPtr siguiente = actual->siguiente;
@@ -13,9 +20,13 @@ Historial::~Historial() {
         delete actual;
         actual = siguiente;
     }
+    primerNodo = nullptr;
+    ultimoNodo = nullptr;
+    cantidad = 0;
 }
 
 NodoHistorialCSVPtr Historial::InsertarFinal(HistorialCSVPtr& registro){
+    if (registro == nullptr) return nullptr;
     NodoHistorialCSVPtr nuevo = new NodoHistorialCSV;
     nuevo->dato = registro;
     nuevo->puntaje = registro->puntaje;
@@ -24,12 +35,9 @@ NodoHistorialCSVPtr Historial::InsertarFinal(HistorialCSVPtr& registro){
     if (primerNodo == nullptr) {
         primerNodo = nuevo;
     } else {
-        NodoHistorialCSVPtr actual = primerNodo;
-        while (actual->siguiente != nullptr) {
-            actual = actual->siguiente;
-        }
-        actual->siguiente = nuevo;
+        ultimoNodo->siguiente = nuevo;
     }
+    ultimoNodo = nuevo;
     cantidad++;
     return nuevo;
 }
@@ -147,4 +155,47 @@ int Historial::tamano() {
 
 NodoHistorialCSVPtr Historial::primero() {
     return primerNodo;
+}
+
+NodoHistorialCSVPtr Historial::ultimo() {
+    return ultimoNodo;
+}
+
+bool Historial::Contiene(HistorialCSVPtr& registro) {
+    if (registro == nullptr) return false;
+    NodoHistorialCSVPtr actual = primerNodo;
+    while (actual != nullptr) {
+        if (std::strcmp(actual->dato->jugador, registro->jugador) == 0) {
+            return true;
+        }
+        actual = actual->siguiente;
+    }
+    return false;
+}
+
+NodoHistorialCSVPtr Historial::SiguientePartida(HistorialCSVPtr& registro){
+    if (registro == nullptr) return nullptr;
+    NodoHistorialCSVPtr actual = primerNodo;
+    while (actual != nullptr) {
+        if (actual->dato == registro) {
+            return actual->siguiente;
+        }
+        actual = actual->siguiente;
+    }
+    return nullptr;
+}
+
+bool Historial::ExisteJugador(const std::string& alias) {
+    for (NodoHistorialCSVPtr nodo = primerNodo; nodo != nullptr; nodo = nodo->siguiente) {
+        if (alias == nodo->dato->jugador) return true;
+    }
+    return false;
+}
+
+int Historial::SiguienteIdPartida() {
+    int mayor = 0;
+    for (NodoHistorialCSVPtr nodo = primerNodo; nodo != nullptr; nodo = nodo->siguiente) {
+        if (nodo->dato->id_partida > mayor) mayor = nodo->dato->id_partida;
+    }
+    return mayor == std::numeric_limits<int>::max() ? 0 : mayor + 1;
 }

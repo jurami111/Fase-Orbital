@@ -10,6 +10,7 @@ BitacoraEventos::~BitacoraEventos(){
     NodoEventoPtr actual = primerNodo;
     while (actual != nullptr) {
         NodoEventoPtr siguiente = actual->siguiente;
+        delete actual->dato;
         delete actual;
         actual = siguiente;
     }
@@ -19,8 +20,14 @@ BitacoraEventos::~BitacoraEventos(){
 }
 
 NodoEventoPtr BitacoraEventos::AgregarFinal(EventoPtr& evento){
+    if (evento == nullptr) return nullptr;
     NodoEventoPtr nuevoNodo = new NodoEvento;
-    nuevoNodo->dato = evento;
+    try {
+        nuevoNodo->dato = new Evento(*evento);
+    } catch (...) {
+        delete nuevoNodo;
+        throw;
+    }
     nuevoNodo->siguiente = nullptr;
 
     if (primerNodo == nullptr) {
@@ -42,6 +49,7 @@ NodoEventoPtr BitacoraEventos::Eliminar(NodoEventoPtr indice) {
         if (indice == ultimoNodo) {
             ultimoNodo = nullptr;
         }
+        delete indice->dato;
         delete indice;
         cantidad--;
         return primerNodo;
@@ -57,6 +65,7 @@ NodoEventoPtr BitacoraEventos::Eliminar(NodoEventoPtr indice) {
         if (indice == ultimoNodo) {
             ultimoNodo = actual;
         }
+        delete indice->dato;
         delete indice;
         cantidad--;
         return actual->siguiente;

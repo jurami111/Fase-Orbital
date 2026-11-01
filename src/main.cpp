@@ -6,15 +6,47 @@
 #include <cmath>
 #include <cstdlib>
 #include <ctime>
+#include <allegro5/allegro_image.h>
+#include "Estadisticas/Persistencia.h"
+#include "Vista/VistaAllegro.h"
+#include <iostream>
+#include <string>
 
-int main()
+int main(int argc, char* argv[])
 {
+    std::string ArchivoHistorial = "historial.csv";
+    std::string CarpetaCapturas;
+    for (int indice = 1; indice < argc; indice++) {
+        const std::string argumento = argv[indice];
+        if (argumento == "--historial" && indice + 1 < argc) ArchivoHistorial = argv[++indice];
+        else if (argumento == "--capturas" && indice + 1 < argc) CarpetaCapturas = argv[++indice];
+        else {
+            std::cerr << "Uso: faseorbital [--historial archivo.csv] [--capturas carpeta]\n";
+            return 1;
+        }
+    }
+    Historial HistorialJugadores;
+    Persistencia Archivos;
+    const bool HistorialCargado = Archivos.cargarHistorial(ArchivoHistorial, &HistorialJugadores);
+    Ranking TablaRanking;
+    TablaRanking.ConstruirDesdeHistorial(&HistorialJugadores);
+    VistaAllegro Reportes;
+    int PasoCaptura = 0;
+
     // Iniciar allegro y lo que vamos a usar
     al_init();
     al_install_keyboard();
+    if (!al_install_mouse()) {
+        std::cerr << "No se pudo instalar el mouse.\n";
+        return 1;
+    }
     al_init_primitives_addon();
     al_init_font_addon();
     al_init_ttf_addon();
+    if (!CarpetaCapturas.empty() && !al_init_image_addon()) {
+        std::cerr << "No se pudo inicializar el addon de imagen.\n";
+        return 1;
+    }
 
     // Crear la ventana del juego
     ALLEGRO_DISPLAY* Ventana = al_create_display(800, 600);
@@ -39,6 +71,7 @@ int main()
     al_register_event_source(Cola, al_get_display_event_source(Ventana));
     al_register_event_source(Cola, al_get_keyboard_event_source());
     al_register_event_source(Cola, al_get_timer_event_source(Timer));
+    al_register_event_source(Cola, al_get_mouse_event_source());
 
     // Colores de la interfaz
     ALLEGRO_COLOR Fondo = al_map_rgb(82, 102, 79);
@@ -55,6 +88,7 @@ int main()
 
     // Para saber si se presionan las teclas
     bool Salir = false;
+    bool EnMenu = true;
     bool Izquierda = false;
     bool Derecha = false;
 
@@ -86,6 +120,36 @@ int main()
         ALLEGRO_EVENT Evento;
         al_wait_for_event(Cola, &Evento);
 
+        if (!CarpetaCapturas.empty() && Evento.type == ALLEGRO_EVENT_TIMER &&
+            PasoCaptura >= 1 && PasoCaptura <= 3) {
+            Evento = ALLEGRO_EVENT{};
+            Evento.type = ALLEGRO_EVENT_MOUSE_BUTTON_DOWN;
+            Evento.mouse.button = 1;
+            Evento.mouse.x = 400;
+            Evento.mouse.y = PasoCaptura == 1 ? 250 : (PasoCaptura == 2 ? 310 : 190);
+            PasoCaptura++;
+        }
+
+        if (Evento.type == ALLEGRO_EVENT_MOUSE_BUTTON_DOWN && Evento.mouse.button == 1) {
+            const float x = Evento.mouse.x;
+            const float y = Evento.mouse.y;
+            if (EnMenu && x >= 280 && x <= 520) {
+                if (y >= 180 && y <= 220) EnMenu = false;
+                else if ((y >= 240 && y <= 280) || (y >= 300 && y <= 340)) {
+                    const bool EsRanking = y <= 280;
+                    const std::string Captura = CarpetaCapturas.empty() ? "" : CarpetaCapturas +
+                        (EsRanking ? "/ranking.png" : "/estadisticas.png");
+                    Salir = !Reportes.MostrarReporte(Ventana, Cola, HistorialJugadores, TablaRanking,
+                        EsRanking ? Pantalla::Ranking : Pantalla::Estadisticas,
+                        HistorialCargado ? "" : "No se pudo cargar el historial", Captura);
+                } else if (y >= 360 && y <= 400) Salir = true;
+            } else if (!EnMenu && x >= 20 && x <= 140 && y >= 95 && y <= 131) {
+                EnMenu = true;
+            }
+            Izquierda = false;
+            Derecha = false;
+        }
+
         // Cerrar la ventana
         if (Evento.type == ALLEGRO_EVENT_DISPLAY_CLOSE)
             Salir = true;
@@ -94,12 +158,17 @@ int main()
         if (Evento.type == ALLEGRO_EVENT_KEY_DOWN)
         {
             if (Evento.keyboard.keycode == ALLEGRO_KEY_ESCAPE)
-                Salir = true;
+            {
+                if (EnMenu) Salir = true;
+                else EnMenu = true;
+                Izquierda = false;
+                Derecha = false;
+            }
 
-            if (Evento.keyboard.keycode == ALLEGRO_KEY_LEFT)
+            if (!EnMenu && Evento.keyboard.keycode == ALLEGRO_KEY_LEFT)
                 Izquierda = true;
 
-            if (Evento.keyboard.keycode == ALLEGRO_KEY_RIGHT)
+            if (!EnMenu && Evento.keyboard.keycode == ALLEGRO_KEY_RIGHT)
                 Derecha = true;
         }
 
@@ -116,6 +185,34 @@ int main()
         // Actualizar lo que se ve en la ventana
         if (Evento.type == ALLEGRO_EVENT_TIMER)
         {
+            if (EnMenu) {
+                al_clear_to_color(Fondo);
+                al_draw_text(Fuente, Crema, 400, 55, ALLEGRO_ALIGN_CENTRE, "FASE ORBITAL");
+                al_draw_circle(400, 125, 25, Morado, 2);
+                al_draw_filled_circle(400, 125, 10, Coral);
+                const char* Botones[] = {"Jugar", "Ranking", "Estadisticas", "Salir"};
+                for (int indice = 0; indice < 4; indice++) {
+                    const int y = 180 + indice * 60;
+                    al_draw_filled_rectangle(280, y, 520, y + 40, Fondo);
+                    al_draw_rectangle(280, y, 520, y + 40, Coral, 1);
+                    al_draw_text(Fuente, Crema, 400, y + (40 - al_get_font_line_height(Fuente)) / 2,
+                                 ALLEGRO_ALIGN_CENTRE, Botones[indice]);
+                }
+                if (!HistorialCargado) {
+                    al_draw_text(Fuente, Coral, 400, 460, ALLEGRO_ALIGN_CENTRE,
+                                 "No se pudo cargar el historial");
+                }
+                if (!CarpetaCapturas.empty() && PasoCaptura == 0) {
+                    if (!al_save_bitmap((CarpetaCapturas + "/principal.png").c_str(), al_get_backbuffer(Ventana))) {
+                        std::cerr << "No se pudo guardar la captura del menu.\n";
+                        Salir = true;
+                    }
+                    PasoCaptura = 1;
+                }
+                al_flip_display();
+                continue;
+            }
+
             // Mover la nave
             if (Izquierda)
                 Angulo -= 0.04f;
@@ -175,7 +272,22 @@ int main()
                          ALLEGRO_ALIGN_CENTRE, "Flechas: mover nave");
 
             al_draw_text(Fuente, Morado, 400, 550,
-                         ALLEGRO_ALIGN_CENTRE, "ESC: salir");
+                         ALLEGRO_ALIGN_CENTRE, "ESC: menu");
+
+            al_draw_filled_rectangle(20, 95, 140, 131, Fondo);
+            al_draw_rectangle(20, 95, 140, 131, Coral, 1);
+            al_draw_text(Fuente, Crema, 80, 95 + (36 - al_get_font_line_height(Fuente)) / 2,
+                         ALLEGRO_ALIGN_CENTRE, "Volver");
+            if (!HistorialCargado) {
+                al_draw_text(Fuente, Coral, 400, 575, ALLEGRO_ALIGN_CENTRE,
+                             "No se pudo cargar el historial");
+            }
+            if (!CarpetaCapturas.empty() && PasoCaptura == 4) {
+                if (!al_save_bitmap((CarpetaCapturas + "/jugar.png").c_str(), al_get_backbuffer(Ventana))) {
+                    std::cerr << "No se pudo guardar la captura del prototipo.\n";
+                }
+                Salir = true;
+            }
 
             // Mostrar todo en pantalla
             al_flip_display();

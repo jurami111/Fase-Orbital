@@ -1,5 +1,4 @@
 #include "ColaSpawn.h"
-#include <memory>
 
 ColaSpawn::ColaSpawn() {
     primerNodo = nullptr;
@@ -58,22 +57,21 @@ void ColaSpawn::Intercambiar(ColaSpawn& otra) {
 }
 
 NodoSpawnPtr ColaSpawn::EncolarCopia(const DatosSpawn& spawn) {
-    std::unique_ptr<DatosSpawn> dato(new DatosSpawn(spawn));
-    std::unique_ptr<NodoSpawn> nuevo(new NodoSpawn);
-    nuevo->dato = dato.get();
-    nuevo->siguiente = nullptr;
-    nuevo->anterior = ultimoNodo;
-
-    if (ultimoNodo != nullptr) {
-        ultimoNodo->siguiente = nuevo.get();
-    } else {
-        primerNodo = nuevo.get();
+    NodoSpawnPtr nuevo = new NodoSpawn{nullptr, nullptr, ultimoNodo};
+    try {
+        nuevo->dato = new DatosSpawn(spawn);
+    } catch (...) {
+        delete nuevo;
+        throw;
     }
-    ultimoNodo = nuevo.get();
+    if (ultimoNodo != nullptr) {
+        ultimoNodo->siguiente = nuevo;
+    } else {
+        primerNodo = nuevo;
+    }
+    ultimoNodo = nuevo;
     cantidad++;
-
-    dato.release();
-    return nuevo.release();
+    return nuevo;
 }
 
 NodoSpawnPtr ColaSpawn::Encolar(SpawnPtr& spawn) {

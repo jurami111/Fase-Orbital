@@ -4,9 +4,16 @@
 #include "../include/Estructuras/RondaJugadores.h"
 #include "../include/Motor/Generador.h"
 #include "../include/Motor/Oleada.h"
+#include "../include/Estadisticas/Estadisticas.h"
+#include "../include/Estadisticas/Persistencia.h"
+#include "../include/Estadisticas/Ranking.h"
 
+#include <cmath>
 #include <cstdint>
+#include <cstring>
+#include <fstream>
 #include <iostream>
+#include <sstream>
 
 namespace {
 bool verificar(bool condicion, const char* mensaje) {
@@ -84,6 +91,7 @@ bool pruebaP04() {
     ListaBalas lista;
     for (int i = 0; i < 6; i++) {
         datos[i].color = (i < 2 || (i >= 3 && i <= 4)) ? 1 : 0;
+        datos[i].duenio = i;
         BalaPtr dato = &datos[i];
         lista.InsertarFinal(dato);
     }
@@ -94,10 +102,12 @@ bool pruebaP04() {
     bool valido = verificar(eliminadas == 4 && lista.tamano() == 2,
                             "se eliminan todas las balas consecutivas marcadas");
     NodoBalaPtr actual = lista.primero();
-    valido &= verificar(actual != nullptr && actual->dato == &datos[2],
+    valido &= verificar(actual != nullptr && actual->dato->duenio == 2 &&
+                        actual->dato != &datos[2],
                         "se conserva la bala válida después de la cabeza");
     actual = actual == nullptr ? nullptr : actual->siguiente;
-    valido &= verificar(actual != nullptr && actual->dato == &datos[5] &&
+    valido &= verificar(actual != nullptr && actual->dato->duenio == 5 &&
+                        actual->dato != &datos[5] &&
                         actual->siguiente == nullptr && lista.ultimo() == actual,
                         "se conserva la bala válida final y la cola es correcta");
     return valido;
@@ -220,13 +230,304 @@ bool pruebaGeneradorYOleada() {
     return valido;
 }
 
+void agregarPuntaje(Historial& historial, int puntaje) {
+    HistorialCSVPtr registro = new HistorialCSV{};
+    std::strcpy(registro->jugador, "Ana");
+    registro->puntaje = puntaje;
+    historial.InsertarFinal(registro);
+}
+
+bool pruebaEstadisticas() {
+    Estadisticas estadisticas;
+    Historial vacio;
+    bool valido = verificar(estadisticas.calcularMediana(&vacio, "Ana") == 0.0 &&
+                            estadisticas.calcularMedia(&vacio, "Ana") == 0.0 &&
+                            estadisticas.calcularDesviacionEstandar(&vacio, "Ana") == 0.0,
+                            "estadisticas de lista vacia");
+    Historial historial;
+    agregarPuntaje(historial, 40);
+    valido &= verificar(estadisticas.calcularMediana(&historial, "Ana") == 40.0,
+                        "mediana de un registro");
+    agregarPuntaje(historial, 10);
+    valido &= verificar(estadisticas.calcularMediana(&historial, "Ana") == 25.0,
+                        "mediana de dos registros inversos");
+    agregarPuntaje(historial, 30);
+    valido &= verificar(estadisticas.calcularMediana(&historial, "Ana") == 30.0,
+                        "mediana impar");
+    agregarPuntaje(historial, 30);
+    valido &= verificar(estadisticas.calcularMediana(&historial, "Ana") == 30.0 &&
+                        estadisticas.calcularMedia(&historial, "Ana") == 27.5 &&
+                        std::fabs(estadisticas.calcularDesviacionEstandar(&historial, "Ana") -
+                                  std::sqrt(118.75)) < 0.000001,
+                        "mediana par con repetidos y desviacion poblacional");
+    valido &= verificar(historial.primero()->dato->puntaje == 40 && historial.tamano() == 4,
+                        "la mediana no modifica el historial");
+    std::ostringstream salida;
+    std::streambuf* anterior = std::cout.rdbuf(salida.rdbuf());
+    estadisticas.imprimirHistogramaASCII(&historial, "Ana");
+    std::cout.rdbuf(anterior);
+    valido &= verificar(salida.str().find("[37.0, 40.0] * (1)") != std::string::npos,
+                        "el maximo pertenece al ultimo intervalo");
+    Historial iguales;
+    agregarPuntaje(iguales, 0);
+    agregarPuntaje(iguales, 0);
+    salida.str("");
+    anterior = std::cout.rdbuf(salida.rdbuf());
+    estadisticas.imprimirHistogramaASCII(&iguales, "Ana");
+    std::cout.rdbuf(anterior);
+    valido &= verificar(salida.str().find("** (2)") != std::string::npos,
+                        "histograma de puntajes iguales sin division por cero");
+    return valido;
+}
+
+bool pruebaPrecisionYDano() {
+    Jugador jugador;
+    std::strcpy(jugador.Alias, "Ana");
+    jugador.correctos = 3;
+    jugador.erroneos = 1;
+    jugador.correctos_color[0] = 1;
+    jugador.erroneos_color[0] = 1;
+    jugador.correctos_color[2] = 2;
+    Evento evento{};
+    evento.jugador = &jugador;
+    evento.tipo_evento = TipoEvento::CHOQUE_NAVE;
+    evento.tipo_enemigo = TipoEnemigo::Tanque;
+    evento.valor = 12;
+    EventoPtr dato = &evento;
+    BitacoraEventos bitacora;
+    bitacora.AgregarFinal(dato);
+    Estadisticas estadisticas;
+    return verificar(estadisticas.calcularPrecisionPromedio(&bitacora, "Ana") == 75.0 &&
+                     estadisticas.obtenerColorMejorPrecision(&bitacora, "Ana") == 2 &&
+                     estadisticas.obtenerEnemigoMasDanino(&bitacora, "Ana") == TipoEnemigo::Tanque,
+                     "precision usa impactos reales y dano incluye choque con nave");
+}
+
+bool pruebaPropiedadDeDatos() {
+    ListaEnemigos enemigos;
+    EnemigoPtr original = new Enemigo{};
+    original->id = 7;
+    NodoEnemigoPtr enemigo = enemigos.InsertarFinal(original);
+    bool valido = verificar(enemigo->dato != original, "enemigo almacenado como copia");
+    delete original;
+    NodoEnemigoPtr segundoEnemigo = enemigos.InsertarDespues(enemigo, enemigo->dato);
+    segundoEnemigo->dato->id = 8;
+    valido &= verificar(enemigo->dato->id == 7 && segundoEnemigo->dato->id == 8,
+                        "copias de enemigos independientes del original y entre si");
+    valido &= verificar(enemigos.Eliminar(enemigo) == segundoEnemigo,
+                        "eliminar enemigo retorna el siguiente");
+
+    Bala bala{};
+    bala.duenio = 3;
+    BalaPtr datoBala = &bala;
+    ListaBalas balas;
+    NodoBalaPtr primeraBala = balas.InsertarInicio(datoBala);
+    bala.duenio = 4;
+    NodoBalaPtr segundaBala = balas.InsertarFinal(datoBala);
+    bala.duenio = 99;
+    valido &= verificar(primeraBala->dato->duenio == 3 && segundaBala->dato->duenio == 4,
+                        "las balas no cambian al modificar el dato local");
+    valido &= verificar(balas.Eliminar(primeraBala) == segundaBala &&
+                        primeraBala == segundaBala && bala.duenio == 99,
+                        "eliminar bala conserva el original y actualiza el puntero");
+
+    Jugador jugador;
+    Evento evento{};
+    evento.jugador = &jugador;
+    evento.valor = 12;
+    EventoPtr datoEvento = &evento;
+    BitacoraEventos bitacora;
+    NodoEventoPtr primerEvento = bitacora.AgregarFinal(datoEvento);
+    evento.valor = 22;
+    NodoEventoPtr segundoEvento = bitacora.AgregarFinal(datoEvento);
+    evento.valor = 32;
+    NodoEventoPtr tercerEvento = bitacora.AgregarFinal(datoEvento);
+    evento.valor = 99;
+    valido &= verificar(primerEvento->dato->valor == 12 && segundoEvento->dato->valor == 22 &&
+                        tercerEvento->dato->valor == 32 && primerEvento->dato->jugador == &jugador,
+                        "eventos copiados pero jugador compartido sin transferir propiedad");
+    bitacora.Eliminar(tercerEvento);
+    bitacora.Eliminar(primerEvento);
+    valido &= verificar(bitacora.primero() == segundoEvento &&
+                        bitacora.ultimo() == segundoEvento && bitacora.tamano() == 1,
+                        "eliminar cabeza y cola de eventos libera solo sus copias");
+
+    RegistroRanking registro{};
+    registro.puntaje = 10;
+    RegistroRankingPtr datoRegistro = &registro;
+    Ranking ranking;
+    NodoRegistroPtr primerRegistro = ranking.InsertarOrdenado(datoRegistro);
+    registro.puntaje = 20;
+    NodoRegistroPtr segundoRegistro = ranking.InsertarOrdenado(datoRegistro);
+    registro.puntaje = 99;
+    valido &= verificar(primerRegistro->dato->puntaje == 10 && segundoRegistro->dato->puntaje == 20 &&
+                        ranking.primero() == segundoRegistro,
+                        "ranking almacena copias independientes");
+    RegistroRankingPtr copiaRegistro = primerRegistro->dato;
+    ranking.Eliminar(copiaRegistro);
+    valido &= verificar(ranking.primero() == segundoRegistro &&
+                        ranking.ultimo() == segundoRegistro && registro.puntaje == 99,
+                        "eliminar ranking con puntero a la copia conserva el original");
+    return valido;
+}
+
+bool pruebaHistorial() {
+    Historial historial;
+    bool valido = verificar(historial.ultimo() == nullptr && historial.SiguienteIdPartida() == 1,
+                            "historial vacio inicializado");
+    agregarPuntaje(historial, 10);
+    agregarPuntaje(historial, 20);
+    historial.ultimo()->dato->id_partida = 7;
+    HistorialCSV consulta{};
+    std::strcpy(consulta.jugador, "Ana");
+    HistorialCSVPtr dato = &consulta;
+    valido &= verificar(historial.ultimo()->dato->puntaje == 20 && historial.Contiene(dato) &&
+                        historial.ExisteJugador("Ana") && !historial.ExisteJugador("Luis") &&
+                        historial.SiguienteIdPartida() == 8,
+                        "cola, comparacion de alias y siguiente identificador");
+    HistorialCSVPtr primero = historial.primero()->dato;
+    valido &= verificar(historial.SiguientePartida(primero) == historial.ultimo(),
+                        "siguiente registro por identidad");
+    historial.Limpiar();
+    valido &= verificar(historial.primero() == nullptr && historial.ultimo() == nullptr &&
+                        historial.tamano() == 0, "limpieza reinicia cabeza, cola y cantidad");
+    agregarPuntaje(historial, 30);
+    return valido && verificar(historial.primero() == historial.ultimo(), "historial reutilizable");
+}
+
+bool pruebaReportesYRanking() {
+    Historial historial;
+    agregarPuntaje(historial, 100);
+    historial.ultimo()->dato->posicion = 1;
+    historial.ultimo()->dato->correctos = 3;
+    historial.ultimo()->dato->erroneos = 1;
+    agregarPuntaje(historial, 300);
+    historial.ultimo()->dato->posicion = 2;
+    historial.ultimo()->dato->correctos = 1;
+    historial.ultimo()->dato->erroneos = 3;
+    agregarPuntaje(historial, 300);
+    std::strcpy(historial.ultimo()->dato->jugador, "Luis");
+    historial.ultimo()->dato->correctos = 3;
+    historial.ultimo()->dato->erroneos = 1;
+    agregarPuntaje(historial, 300);
+    std::strcpy(historial.ultimo()->dato->jugador, "Zoe");
+    historial.ultimo()->dato->correctos = 3;
+    historial.ultimo()->dato->erroneos = 1;
+    Estadisticas estadisticas;
+    const ResumenHistorico resumen = estadisticas.calcularResumenHistorico(&historial, "Ana");
+    bool valido = verificar(resumen.partidas_jugadas == 2 && resumen.cantidad_victorias == 1 &&
+                            resumen.mejor_puntaje == 300 && resumen.peor_puntaje == 100 &&
+                            resumen.media == 200.0 && resumen.mediana == 200.0 &&
+                            resumen.desviacion_estandar == 100.0 && resumen.precision_promedio == 50.0,
+                            "resumen historico y promedio por partida");
+    Ranking ranking;
+    ranking.ConstruirDesdeHistorial(&historial);
+    valido &= verificar(std::strcmp(ranking.Top(1)->dato->Alias, "Luis") == 0 &&
+                        std::strcmp(ranking.Top(2)->dato->Alias, "Zoe") == 0 &&
+                        std::strcmp(ranking.Top(3)->dato->Alias, "Ana") == 0 &&
+                        ranking.Top(4) == nullptr, "alias unicos y desempates de precision y nombre");
+    ranking.ConstruirDesdeHistorial(&historial);
+    valido &= verificar(ranking.Top(4) == nullptr, "reconstruir no duplica ranking");
+    Jugador jugador;
+    Evento baja{};
+    baja.jugador = &jugador;
+    baja.oleada = 1;
+    baja.tipo_evento = TipoEvento::BAJA;
+    baja.valor = 100;
+    EventoPtr dato = &baja;
+    BitacoraEventos bitacora;
+    bitacora.AgregarFinal(dato);
+    baja.tipo_evento = TipoEvento::CHOQUE_NAVE;
+    baja.valor = 12;
+    bitacora.AgregarFinal(dato);
+    const ResumenOleada oleada = estadisticas.calcularResumenOleada(&bitacora, &jugador, 1);
+    return valido && verificar(oleada.bajas == 1 && oleada.puntos == 100 && oleada.dano == 12,
+                              "resumen de oleada desde bitacora");
+}
+
+bool pruebaGuardarParticipantes(const std::string& ruta) {
+    Jugador ana, luis;
+    std::strcpy(ana.Alias, "Ana");
+    std::strcpy(luis.Alias, "Luis");
+    ana.posicion = 1;
+    ana.puntaje = 300;
+    luis.posicion = 2;
+    luis.puntaje = 100;
+    JugadorPtr jugadores[] = {&ana, &luis};
+    Historial historial;
+    Persistencia persistencia;
+    bool valido = persistencia.guardarPartidaCompleta(ruta, jugadores, 2, 42, "turnos", &historial);
+    valido &= verificar(historial.tamano() == 2 && historial.primero()->dato->id_partida == 1 &&
+                        historial.ultimo()->dato->id_partida == 1,
+                        "todos los participantes se guardan con id comun");
+    Historial recargado;
+    valido &= persistencia.cargarHistorial(ruta, &recargado);
+    valido &= verificar(recargado.tamano() == 2, "archivo coincide con historial en memoria");
+    luis.posicion = 1;
+    valido &= verificar(!persistencia.guardarPartidaCompleta(ruta, jugadores, 2, 43, "turnos", &historial) &&
+                        historial.tamano() == 2, "datos invalidos no modifican historial");
+    return valido;
+}
+
+bool pruebaPersistencia(const std::string& ruta) {
+    Persistencia persistencia;
+    Jugador jugador;
+    std::strcpy(jugador.Alias, "Ana,\"Luz\"");
+    jugador.posicion = 1;
+    jugador.puntaje = 10;
+    bool valido = persistencia.guardarPartida(ruta, &jugador, 1, 42, "turnos");
+    jugador.puntaje = 20;
+    valido &= persistencia.guardarPartida(ruta, &jugador, 2, 42, "turnos");
+    Historial historial;
+    valido &= persistencia.cargarHistorial(ruta, &historial);
+    Estadisticas estadisticas;
+    valido &= verificar(historial.tamano() == 2 &&
+                        estadisticas.calcularMediana(&historial, jugador.Alias) == 15.0,
+                        "guardar y recargar conserva alias con comas y comillas");
+    std::ifstream lectura(ruta);
+    std::string encabezado, primera, segunda;
+    std::getline(lectura, encabezado);
+    std::getline(lectura, primera);
+    std::getline(lectura, segunda);
+    lectura.close();
+    std::ofstream archivo(ruta);
+    archivo << encabezado << "\r\n" << primera << "\r\n" << segunda << "\r\n";
+    archivo << primera << ",extra\n";
+    archivo << primera.substr(0, primera.rfind(',')) << '\n';
+    archivo << "x" << primera.substr(primera.find(',')) << '\n';
+    archivo << "999999999999999999999" << primera.substr(primera.find(',')) << '\n';
+    archivo << "1,42,\"turnos\"x,Ana,0,0,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n";
+    archivo << "1,42,tu\"rnos,Ana,0,0,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n";
+    archivo.close();
+    Historial recargado;
+    std::ostringstream errores;
+    std::streambuf* anterior = std::cerr.rdbuf(errores.rdbuf());
+    valido &= persistencia.cargarHistorial(ruta, &recargado);
+    std::cerr.rdbuf(anterior);
+    valido &= verificar(recargado.tamano() == 2 &&
+                        errores.str().find("4") != std::string::npos &&
+                        errores.str().find("7") != std::string::npos &&
+                        errores.str().find("8") != std::string::npos &&
+                        errores.str().find("9") != std::string::npos,
+                        "CRLF valido y filas con campos, numeros o comillas invalidos omitidos");
+    archivo.open(ruta);
+    archivo << "encabezado incorrecto\n";
+    archivo.close();
+    anterior = std::cerr.rdbuf(errores.rdbuf());
+    valido &= verificar(!persistencia.cargarHistorial(ruta, &recargado) &&
+                        !persistencia.guardarPartida(ruta, &jugador, 3, 42, "turnos"),
+                        "se rechaza encabezado incorrecto al cargar y guardar");
+    std::cerr.rdbuf(anterior);
+    return valido;
+}
+
 void reportar(const char* nombre, bool resultado, int& fallidas) {
     std::cout << nombre << (resultado ? " PASS\n" : " FAIL\n");
     if (!resultado) fallidas++;
 }
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     int fallidas = 0;
     reportar("P01", pruebaP01(), fallidas);
     reportar("P02", pruebaP02(), fallidas);
@@ -236,6 +537,13 @@ int main() {
     reportar("P06", pruebaP06(), fallidas);
     reportar("P07", pruebaP07(), fallidas);
     reportar("G01", pruebaGeneradorYOleada(), fallidas);
+    reportar("E01", pruebaEstadisticas(), fallidas);
+    reportar("E02", pruebaPrecisionYDano(), fallidas);
+    reportar("M01", pruebaPropiedadDeDatos(), fallidas);
+    reportar("H01", pruebaHistorial(), fallidas);
+    reportar("R01", pruebaReportesYRanking(), fallidas);
+    if (argc > 1) reportar("CSV02", pruebaGuardarParticipantes(std::string(argv[1]) + ".partida"), fallidas);
+    if (argc > 1) reportar("CSV01", pruebaPersistencia(argv[1]), fallidas);
     std::cout << (fallidas == 0 ? "Todas las pruebas pasaron.\n" : "Hay pruebas fallidas.\n");
     return fallidas == 0 ? 0 : 1;
 }

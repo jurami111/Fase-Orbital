@@ -74,17 +74,21 @@ NodoJugadorPtr RondaJugadores::EliminarJugador(NodoJugadorPtr indice) {
 JugadorPtr RondaJugadores::EliminarActual(bool horario) {
     if (Actual == nullptr) return nullptr;
 
-    JugadorPtr eliminado = Actual->dato;
+    NodoJugadorPtr nodo = Actual;
+    JugadorPtr eliminado = nodo->dato;
     if (cantidad == 1) {
-        EliminarJugador(Actual);
-        return eliminado;
+        primero = nullptr;
+        ultimo = nullptr;
+        Actual = nullptr;
+    } else {
+        nodo->anterior->siguiente = nodo->siguiente;
+        nodo->siguiente->anterior = nodo->anterior;
+        if (primero == nodo) primero = nodo->siguiente;
+        if (ultimo == nodo) ultimo = nodo->anterior;
+        Actual = horario ? nodo->siguiente : nodo->anterior;
     }
-
-    NodoJugadorPtr nuevoActual = horario ? Actual->siguiente : Actual->anterior;
-    NodoJugadorPtr eliminadoNodo = Actual;
-    Actual = nuevoActual;
-    EliminarJugador(eliminadoNodo);
-    Actual = nuevoActual;
+    delete nodo;
+    cantidad--;
     return eliminado;
 }
 

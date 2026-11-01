@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 typedef struct HistorialCSV{
     int id_partida, semilla;
     char modo[25];
@@ -22,6 +24,7 @@ struct NodoHistorialCSV {
 class Historial {
     private:
         NodoHistorialCSVPtr primerNodo;
+        NodoHistorialCSVPtr ultimoNodo;
         int cantidad;
 
     public:
@@ -43,5 +46,11 @@ class Historial {
         bool isVacia(); //Verificamos si la lista esta vacia    
         int tamano();
         NodoHistorialCSVPtr primero();
+        NodoHistorialCSVPtr ultimo();
+        void Limpiar();
+        bool ExisteJugador(const std::string& alias);
+        int SiguienteIdPartida();
+        bool Contiene(HistorialCSVPtr& registro); //Verificamos si la lista contiene un registro específico
+        NodoHistorialCSVPtr SiguientePartida(HistorialCSVPtr& registro); //Obtenemos el siguiente registro de la lista
 
 };

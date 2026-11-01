@@ -11,4 +11,8 @@ class Persistencia {
         bool cargarHistorial(const std::string& ruta, Historial* historial);
         bool guardarPartida(const std::string& ruta, JugadorPtr jugador,
                             int idPartida, int semilla, const std::string& modo);
+        bool crearRegistro(JugadorPtr jugador, int idPartida, int semilla,
+                   const std::string& modo, HistorialCSV& registro);
+        bool guardarPartidaCompleta(const std::string& ruta, JugadorPtr jugadores[], int cantidad,
+                        int semilla, const std::string& modo, Historial* historial);
 };
