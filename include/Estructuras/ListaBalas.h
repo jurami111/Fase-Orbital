@@ -41,6 +41,7 @@ class ListaBalas {
                 if (debeEliminarse(actual->dato)) {
                     *enlace = actual->siguiente;
                     if (actual == ultimoNodo) ultimoNodo = anterior;
+                    delete actual->dato;
                     delete actual;
                     cantidad--;
                     eliminadas++;

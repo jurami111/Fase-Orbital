@@ -13,6 +13,7 @@ ListaEnemigos::~ListaEnemigos() {
     NodoEnemigo* actual = primerNodo;
     while (actual != nullptr) {
         NodoEnemigo* siguiente = actual->siguiente;
+        delete actual->dato;
         delete actual;
         actual = siguiente;
     }
@@ -20,8 +21,14 @@ ListaEnemigos::~ListaEnemigos() {
 
 // Implementación de insertarFinal
 NodoEnemigo* ListaEnemigos::InsertarFinal(EnemigoPtr& enemigo) {
+    if (enemigo == nullptr) return nullptr;
     NodoEnemigo* nuevo = new NodoEnemigo; // Reservas memoria
-    nuevo->dato = enemigo;
+    try {
+        nuevo->dato = new Enemigo(*enemigo);
+    } catch (...) {
+        delete nuevo;
+        throw;
+    }
     nuevo->siguiente = nullptr;
     nuevo->anterior = ultimoNodo;
     
@@ -38,10 +45,15 @@ NodoEnemigo* ListaEnemigos::InsertarFinal(EnemigoPtr& enemigo) {
 
 // Implementación de insertarDespues
 NodoEnemigoPtr ListaEnemigos::InsertarDespues(NodoEnemigoPtr indice, const EnemigoPtr& enemigo) {
-    if (indice == nullptr) return nullptr;
+    if (indice == nullptr || enemigo == nullptr) return nullptr;
 
     NodoEnemigoPtr nuevo = new NodoEnemigo;
-    nuevo->dato = enemigo;
+    try {
+        nuevo->dato = new Enemigo(*enemigo);
+    } catch (...) {
+        delete nuevo;
+        throw;
+    }
     nuevo->siguiente = indice->siguiente;
     nuevo->anterior = indice;
 
@@ -72,6 +84,7 @@ NodoEnemigoPtr ListaEnemigos::Eliminar(NodoEnemigoPtr indice) {
     }
 
     NodoEnemigoPtr siguiente = indice->siguiente;
+    delete indice->dato;
     delete indice;
     cantidad--;
 

@@ -12,6 +12,7 @@ ListaBalas::~ListaBalas() {
     NodoBalaPtr actual = primerNodo;
     while (actual != nullptr) {
         NodoBalaPtr siguiente = actual->siguiente;
+        delete actual->dato;
         delete actual;
         actual = siguiente;
     }
@@ -21,8 +22,14 @@ ListaBalas::~ListaBalas() {
 }
 
 NodoBalaPtr ListaBalas::InsertarInicio(BalaPtr& bala){
+    if (bala == nullptr) return nullptr;
     NodoBalaPtr nuevo = new NodoBala;
-    nuevo->dato = bala;
+    try {
+        nuevo->dato = new Bala(*bala);
+    } catch (...) {
+        delete nuevo;
+        throw;
+    }
     nuevo->siguiente = primerNodo;
 
     if (primerNodo == nullptr) ultimoNodo = nuevo;
@@ -33,8 +40,14 @@ NodoBalaPtr ListaBalas::InsertarInicio(BalaPtr& bala){
 }
 
 NodoBalaPtr ListaBalas::InsertarFinal(BalaPtr& bala){
+    if (bala == nullptr) return nullptr;
     NodoBalaPtr nuevo = new NodoBala;
-    nuevo->dato = bala;
+    try {
+        nuevo->dato = new Bala(*bala);
+    } catch (...) {
+        delete nuevo;
+        throw;
+    }
     nuevo->siguiente = nullptr;
 
     if (ultimoNodo != nullptr) {
@@ -62,6 +75,7 @@ NodoBalaPtr ListaBalas::Eliminar(NodoBalaPtr& bala) {
     NodoBalaPtr siguiente = bala->siguiente;
     *enlace = siguiente;
     if (bala == ultimoNodo) ultimoNodo = anterior;
+    delete bala->dato;
     delete bala;
     bala = siguiente;
     cantidad--;
