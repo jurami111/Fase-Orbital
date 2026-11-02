@@ -6,6 +6,7 @@
 
 #include <cmath>       // Para calcular las posiciones con seno y coseno
 #include <cstdlib>     // Para utilizar numeros aleatorios
+#include <cstring>     // Para copiar el alias del jugador
 #include <ctime>       // Para cambiar los numeros aleatorios en cada partida
 #include <iostream>    // Para mostrar mensajes en la consola
 #include <string>      // Para trabajar con textos
@@ -73,6 +74,16 @@ void CrearOleada(ListaEnemigos& Enemigos, int Oleada, int& SiguienteId)
         EnemigoPtr Nuevo = &NuevoEnemigo;
         Enemigos.InsertarFinal(Nuevo);
     }
+}
+
+// Deja listas las estadisticas y la semilla para una nueva partida
+void ReiniciarPartida(Jugador& Datos, int& Semilla, bool& Guardada)
+{
+    Datos = Jugador{};
+    std::strcpy(Datos.Alias, "Jugador");
+    Semilla = (int)time(NULL);
+    srand((unsigned int)Semilla);
+    Guardada = false;
 }
 
 int main(int argc, char* argv[])
@@ -188,6 +199,9 @@ int main(int argc, char* argv[])
     int ColorSeleccionado = 0; // Empezamos utilizando cian
     int EnemigosEliminados = 0; // Para calcular el puntaje
     int Combo = 0; // Aumenta al eliminar enemigos
+    Jugador DatosPartida; // Estadisticas de la partida actual
+    int Semilla = 0; // Semilla de la partida actual
+    bool PartidaGuardada = false; // Evita guardar la misma partida dos veces
 
     // Variables nuevas para controlar las oleadas
     int Oleada = 1; // La partida empieza en la oleada uno
@@ -199,7 +213,7 @@ int main(int argc, char* argv[])
     const int TotalOleadas = 5; // Hay que superar cinco oleadas
 
     // Cambiamos la semilla para que los colores no sean siempre iguales
-    srand((unsigned int)time(NULL));
+    ReiniciarPartida(DatosPartida, Semilla, PartidaGuardada);
 
     // Creamos los enemigos de la primera oleada
     CrearOleada(Enemigos, Oleada, SiguienteId);
@@ -241,8 +255,8 @@ int main(int argc, char* argv[])
             const float y = Evento.mouse.y; // Posicion vertical
 
             
-            // Revisamos si estamos en victoria o derrota
-            if (GameOver || Victoria)
+            // Revisamos si estamos en victoria o derrota (no en el menu)
+            if ((GameOver || Victoria) && !EnMenu)
             {
                 // Boton para volver a jugar
                 if (x >= 280 && x <= 520 &&
@@ -269,6 +283,7 @@ int main(int argc, char* argv[])
                     OleadaTerminada = false; // La nueva oleada no ha terminado
 
                     EnemigosEliminados = 0; // Volvemos a cero puntos
+                    ReiniciarPartida(DatosPartida, Semilla, PartidaGuardada);
                     Combo = 0; // Reiniciamos el combo
                     TiempoDisparo = 0; // Reiniciamos los disparos
                     ColorSeleccionado = 0; // Empezamos con cian
@@ -333,6 +348,7 @@ int main(int argc, char* argv[])
                     ColorSeleccionado = 0; // Volvemos al cian
                     TiempoDisparo = 0;
                     EnemigosEliminados = 0; // Reiniciamos los puntos
+                    ReiniciarPartida(DatosPartida, Semilla, PartidaGuardada);
                     Combo = 0; // Reiniciamos el combo
                     Izquierda = false;
                     Derecha = false;
@@ -544,6 +560,8 @@ int main(int argc, char* argv[])
             // Solo actualizamos la partida cuando no esta en pausa
             if (!EnPausa && !GameOver && !Victoria)
             {
+                DatosPartida.ticks++;
+
                 // Movemos la nave por su orbita
                 if (Izquierda)
                 {
@@ -599,6 +617,7 @@ int main(int argc, char* argv[])
 
                         NuevaBala.color = ColorSeleccionado; // Color actual
                         NuevaBala.duenio = 1; // Pertenece al jugador
+                        DatosPartida.disparos++;
 
                         // Guardamos la bala en la lista
                         BalaPtr Nueva = &NuevaBala;
@@ -692,12 +711,17 @@ int main(int argc, char* argv[])
                             if (Actual->color == Objetivo->color)
                             {
                                 Objetivo->vida--; // Le quitamos una vida
+                                DatosPartida.correctos++;
 
                                 // Si se quedo sin vida, eliminamos al enemigo
                                 if (Objetivo->vida <= 0)
                                 {
                                     EnemigosEliminados++; // Aumenta el puntaje
                                     Combo++; // Aumenta el combo
+                                    if (Combo > DatosPartida.combo_max) DatosPartida.combo_max = Combo;
+
+                                    if (Objetivo->tipo == TipoEnemigo::Tanque) DatosPartida.bajas_tanque++;
+                                    else DatosPartida.bajas_dron++;
 
                                     // Lo quitamos de la lista
                                     EnemigoRevisado =
@@ -710,6 +734,7 @@ int main(int argc, char* argv[])
                                 Objetivo->r += 9;
 
                                 Combo = 0; // Se pierde el combo
+                                DatosPartida.erroneos++;
                             }
 
                             break; // Una bala solo puede golpear a un enemigo
@@ -746,6 +771,19 @@ int main(int argc, char* argv[])
                 }
             } // Cerramos la actualizacion de la partida
               // Los dibujos quedan afuera para mostrar Game Over y Victoria
+
+            // Guardamos la partida una sola vez al terminar
+            if ((GameOver || Victoria) && !PartidaGuardada)
+            {
+                PartidaGuardada = true;
+                DatosPartida.puntaje = EnemigosEliminados * 100;
+                DatosPartida.numero_oleada = Oleada;
+                DatosPartida.posicion = 1;
+
+                JugadorPtr Jugadores[1] = {&DatosPartida};
+                Archivos.guardarPartidaCompleta(ArchivoHistorial, Jugadores, 1, Semilla, "Clasico", &HistorialJugadores);
+                TablaRanking.ConstruirDesdeHistorial(&HistorialJugadores);
+            }
 
             // Limpiamos la pantalla antes de volver a dibujar todo
             al_clear_to_color(Fondo);

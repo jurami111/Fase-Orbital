@@ -15,8 +15,8 @@ all: build/faseorbital
 build:
 	mkdir -p build
 
-build/faseorbital: src/main.cpp src/Vista/VistsAllegro.cpp $(CORE) $(HEADERS) Makefile | build
-	$(CXX) $(CXXFLAGS) $(INCLUDES) src/main.cpp src/Vista/VistsAllegro.cpp $(CORE) -o $@ $$(pkg-config --cflags --libs $(ALLEGRO))
+build/faseorbital: src/main.cpp src/Vista/VistaAllegro.cpp $(CORE) $(HEADERS) Makefile | build
+	$(CXX) $(CXXFLAGS) $(INCLUDES) src/main.cpp src/Vista/VistaAllegro.cpp $(CORE) -o $@ $$(pkg-config --cflags --libs $(ALLEGRO))
 
 consola: build/faseorbital-consola
 
