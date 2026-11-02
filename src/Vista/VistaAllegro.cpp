@@ -7,8 +7,15 @@
 #include <sstream>
 
 namespace {
-ALLEGRO_COLOR textoColor() { return al_map_rgb(242, 229, 201); }
-ALLEGRO_COLOR acento() { return al_map_rgb(228, 154, 134); }
+ALLEGRO_COLOR textoColor() { return al_map_rgb(235, 242, 246); }
+ALLEGRO_COLOR acento() { return al_map_rgb(123, 212, 195); }
+ALLEGRO_COLOR fondo() { return al_map_rgb(20, 29, 43); }
+ALLEGRO_COLOR borde() { return al_map_rgb(103, 129, 157); }
+ALLEGRO_COLOR cian() { return al_map_rgb(68, 210, 225); }
+ALLEGRO_COLOR magenta() { return al_map_rgb(238, 91, 176); }
+ALLEGRO_COLOR ambar() { return al_map_rgb(245, 183, 73); }
+ALLEGRO_COLOR panel() { return al_map_rgb(29, 42, 60); }
+ALLEGRO_COLOR panelAlterno() { return al_map_rgb(35, 49, 68); }
 
 void texto(ALLEGRO_FONT* fuente, float x, float y, const std::string& contenido, float escala = 1.5f) {
 	const int ancho = al_get_text_width(fuente, contenido.c_str());
@@ -33,7 +40,7 @@ bool dentro(float mouseX, float mouseY, float x, float y, float ancho, float alt
 }
 
 void boton(ALLEGRO_FONT* fuente, float x, float y, float ancho, const std::string& titulo) {
-	al_draw_filled_rectangle(x, y, x + ancho, y + 36, al_map_rgb(65, 86, 62));
+	al_draw_filled_rectangle(x, y, x + ancho, y + 36, panel());
 	al_draw_rectangle(x, y, x + ancho, y + 36, acento(), 1);
 	const float textoX = x + (ancho - al_get_text_width(fuente, titulo.c_str()) * 1.5f) / 2;
 	texto(fuente, textoX, y + 12, titulo);
@@ -291,7 +298,7 @@ void VistaAllegro::ProcesarEvento(const ALLEGRO_EVENT& evento) {
 }
 
 void VistaAllegro::Dibujar(const std::string& aviso) {
-	al_clear_to_color(al_map_rgb(40, 53, 40));
+	al_clear_to_color(fondo());
 	if (pantalla == Pantalla::Menu) DibujarMenu();
 	if (pantalla == Pantalla::Estadisticas) DibujarEstadisticas();
 	if (pantalla == Pantalla::Ranking) DibujarRanking();
@@ -302,8 +309,8 @@ void VistaAllegro::Dibujar(const std::string& aviso) {
 
 void VistaAllegro::DibujarMenu() {
 	texto(fuente, 256, 70, "FASE ORBITAL", 3.0f);
-	al_draw_circle(400, 165, 30, acento(), 2);
-	al_draw_filled_circle(400, 165, 10, textoColor());
+	al_draw_circle(400, 165, 30, borde(), 2);
+	al_draw_filled_circle(400, 165, 10, cian());
 	boton(fuente, 280, 230, 240, "Estadisticas");
 	boton(fuente, 280, 282, 240, "Ranking");
 	boton(fuente, 280, 334, 240, "Vista previa");
@@ -330,11 +337,12 @@ void VistaAllegro::DibujarEstadisticas() {
 	texto(fuente, 40, 298, "Puntajes");
 	int mayor = 1;
 	for (int frecuencia : histograma.frecuencias) if (frecuencia > mayor) mayor = frecuencia;
-	al_draw_line(40, 480, 760, 480, textoColor(), 1);
+	al_draw_line(40, 480, 760, 480, borde(), 1);
 	for (int indice = 0; indice < 10; indice++) {
 		const float x = 48 + indice * 71;
 		const float alto = 135.0f * histograma.frecuencias[indice] / mayor;
-		al_draw_filled_rectangle(x, 480 - alto, x + 48, 480, acento());
+		const ALLEGRO_COLOR coloresBarras[] = {cian(), magenta(), ambar()};
+		al_draw_filled_rectangle(x, 480 - alto, x + 48, 480, coloresBarras[indice % 3]);
 		texto(fuente, x, 462 - alto, std::to_string(histograma.frecuencias[indice]), 1.0f);
 	}
 	texto(fuente, 40, 500, std::to_string(histograma.minimo) + " - " + std::to_string(histograma.maximo));
@@ -347,6 +355,7 @@ void VistaAllegro::DibujarRanking() {
 		texto(fuente, 40, 150, "Sin partidas registradas");
 		return;
 	}
+	al_draw_filled_rectangle(24, 117, 776, 153, panel());
 	texto(fuente, 40, 124, "Pos.");
 	texto(fuente, 110, 124, "Jugador");
 	texto(fuente, 440, 124, "Mejor puntaje");
@@ -354,27 +363,29 @@ void VistaAllegro::DibujarRanking() {
 	NodoRegistroPtr nodo = ranking->primero();
 	for (int posicion = 0; nodo != nullptr && posicion < 10; posicion++, nodo = nodo->siguiente) {
 		const float y = 164 + posicion * 30;
+		al_draw_filled_rectangle(24, y - 5, 776, y + 23,
+			posicion % 2 == 0 ? panel() : panelAlterno());
 		texto(fuente, 40, y, std::to_string(posicion + 1));
 		texto(fuente, 110, y, nodo->dato->Alias);
 		texto(fuente, 440, y, std::to_string(nodo->dato->puntaje));
 		texto(fuente, 640, y, decimal(nodo->dato->presicion) + "%");
-		al_draw_line(24, y + 22, 776, y + 22, al_map_rgb(65, 86, 62), 1);
+		al_draw_line(24, y + 22, 776, y + 22, panel(), 1);
 	}
 }
 
 void VistaAllegro::DibujarVistaPrevia() {
 	texto(fuente, 40, 32, "Vista previa", 3.0f);
-	al_draw_circle(400, 300, 100, textoColor(), 2);
-	al_draw_filled_circle(400, 300, 20, acento());
+	al_draw_circle(400, 300, 100, borde(), 2);
+	al_draw_filled_circle(400, 300, 20, cian());
 	const double radianes = angulo * 3.14159265358979323846 / 180.0;
 	const float naveX = 400 + 100 * std::cos(radianes);
 	const float naveY = 300 - 100 * std::sin(radianes);
-	al_draw_filled_circle(naveX, naveY, 8, al_map_rgb(80, 220, 220));
+	al_draw_filled_circle(naveX, naveY, 8, acento());
 	for (int indice = 0; indice < 6; indice++) {
 		const double theta = (indice * 60.0 + ticks * 0.3) * 3.14159265358979323846 / 180.0;
 		const float x = 400 + 210 * std::cos(theta);
 		const float y = 300 - 210 * std::sin(theta);
-		const ALLEGRO_COLOR colores[] = {al_map_rgb(80, 220, 220), al_map_rgb(230, 90, 190), acento()};
+		const ALLEGRO_COLOR colores[] = {cian(), magenta(), ambar()};
 		const ALLEGRO_COLOR color = colores[indice % 3];
 		if (indice == 0) al_draw_filled_circle(x, y, 6, color);
 		if (indice == 1) { al_draw_circle(x, y, 8, color, 2); al_draw_line(x - 10, y, x + 10, y, color, 2); }

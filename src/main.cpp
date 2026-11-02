@@ -1,4 +1,3 @@
-
 #include <allegro5/allegro.h>
 #include <allegro5/allegro_primitives.h>
 #include <allegro5/allegro_font.h>
@@ -9,8 +8,12 @@
 #include <allegro5/allegro_image.h>
 #include "Estadisticas/Persistencia.h"
 #include "Vista/VistaAllegro.h"
+#include "Estructuras/ListaBalas.h"
 #include <iostream>
 #include <string>
+
+#include "Estructuras/ListaEnemigos.h"
+
 
 int main(int argc, char* argv[])
 {
@@ -51,7 +54,7 @@ int main(int argc, char* argv[])
     // Crear la ventana del juego
     ALLEGRO_DISPLAY* Ventana = al_create_display(800, 600);
     ALLEGRO_EVENT_QUEUE* Cola = al_create_event_queue();
-    ALLEGRO_TIMER* Timer = al_create_timer(1.0 / 60);
+    ALLEGRO_TIMER* Timer = al_create_timer(1.0 / 30);
 
     // Fuente para los textos
     ALLEGRO_FONT* Fuente = al_load_ttf_font(
@@ -74,16 +77,16 @@ int main(int argc, char* argv[])
     al_register_event_source(Cola, al_get_mouse_event_source());
 
     // Colores de la interfaz
-    ALLEGRO_COLOR Fondo = al_map_rgb(82, 102, 79);
-    ALLEGRO_COLOR Crema = al_map_rgb(242, 229, 201);
-    ALLEGRO_COLOR Morado = al_map_rgb(181, 154, 197);
-    ALLEGRO_COLOR Coral = al_map_rgb(228, 154, 134);
+    ALLEGRO_COLOR Fondo = al_map_rgb(20, 29, 43);
+    ALLEGRO_COLOR Crema = al_map_rgb(235, 242, 246);
+    ALLEGRO_COLOR Morado = al_map_rgb(103, 129, 157);
+    ALLEGRO_COLOR Coral = al_map_rgb(123, 212, 195);
 
     // Colores que pueden tener los enemigos
     ALLEGRO_COLOR Colores[3] = {
-        al_map_rgb(228, 154, 134),
-        al_map_rgb(235, 200, 115),
-        al_map_rgb(181, 154, 197)
+        al_map_rgb(68, 210, 225),   // Cian
+        al_map_rgb(238, 91, 176),   // Magenta
+        al_map_rgb(245, 183, 73)    // Ambar
     };
 
     // Para saber si se presionan las teclas
@@ -96,21 +99,49 @@ int main(int argc, char* argv[])
     float Angulo = 0;
     float Radio = 150;
 
-    // Datos de los enemigos
-    const int Cantidad = 5;
-    float AnguloEnemigo[Cantidad];
-    float DistanciaEnemigo[Cantidad];
-    int ColorEnemigo[Cantidad];
+    // Guardar las balas que dispara la nave
+    ListaBalas Balas;
+    ListaEnemigos Enemigos;
+    int TiempoDisparo = 0;
+    int ColorSeleccionado = 0;
+    int EnemigosEliminados = 0;
+    int Combo = 0;
 
+    // Los enemigos se guardan en la lista doblemente enlazada
     srand((unsigned int)time(NULL));
 
-    // Poner a los enemigos en posiciones diferentes
-    for (int i = 0; i < Cantidad; i++)
-    {
-        AnguloEnemigo[i] = (rand() % 628) / 100.0f;
-        DistanciaEnemigo[i] = 230 + rand() % 120;
-        ColorEnemigo[i] = rand() % 3;
-    }
+    // Crear el primer dron
+    Enemigo DronNuevo{};
+
+    DronNuevo.id = 1;
+    DronNuevo.tipo = TipoEnemigo::Dron;
+    DronNuevo.r = 300;
+    DronNuevo.theta = 0;
+    DronNuevo.omega = 0;
+    DronNuevo.color = 0;
+    DronNuevo.vida = 1;
+    DronNuevo.radio = 11;
+    DronNuevo.ticksColor = 0;
+
+    EnemigoPtr Nuevo = &DronNuevo;
+    Enemigos.InsertarFinal(Nuevo);
+
+    // Crear el primer tanque
+    Enemigo TanqueNuevo{};
+
+    TanqueNuevo.id = 2;
+    TanqueNuevo.tipo = TipoEnemigo::Tanque;
+    TanqueNuevo.r = 300;
+    TanqueNuevo.theta = 3.14;
+    TanqueNuevo.omega = 0;
+    TanqueNuevo.color = 1;
+    TanqueNuevo.vida = 3;
+    TanqueNuevo.radio = 16;
+    TanqueNuevo.ticksColor = 0;
+
+    Nuevo = &TanqueNuevo;
+    Enemigos.InsertarFinal(Nuevo);
+
 
     al_start_timer(Timer);
 
@@ -170,6 +201,14 @@ int main(int argc, char* argv[])
 
             if (!EnMenu && Evento.keyboard.keycode == ALLEGRO_KEY_RIGHT)
                 Derecha = true;
+
+            // Cambiar el color de las proximas balas
+            if (!EnMenu && (Evento.keyboard.keycode == ALLEGRO_KEY_1 || Evento.keyboard.keycode == ALLEGRO_KEY_J))
+                ColorSeleccionado = 0;
+            if (!EnMenu && (Evento.keyboard.keycode == ALLEGRO_KEY_2 || Evento.keyboard.keycode == ALLEGRO_KEY_K))
+                ColorSeleccionado = 1;
+            if (!EnMenu && (Evento.keyboard.keycode == ALLEGRO_KEY_3 || Evento.keyboard.keycode == ALLEGRO_KEY_L))
+                ColorSeleccionado = 2;
         }
 
         // Cuando se dejan de presionar las flechas
@@ -220,6 +259,94 @@ int main(int argc, char* argv[])
             if (Derecha)
                 Angulo += 0.04f;
 
+            // Disparar una bala cada 4 vueltas del timer
+            TiempoDisparo++;
+            if (TiempoDisparo >= 4)
+            {
+                TiempoDisparo = 0;
+
+                // La bala sale un poco adelante de la nave
+                Bala NuevaBala;
+                NuevaBala.x = 400 + cos(Angulo) * (Radio + 15);
+                NuevaBala.y = 310 + sin(Angulo) * (Radio + 15);
+
+                // Las balas van hacia afuera, donde vienen los enemigos
+                NuevaBala.vx = cos(Angulo) * 9;
+                NuevaBala.vy = sin(Angulo) * 9;
+                NuevaBala.color = ColorSeleccionado;
+                NuevaBala.duenio = 1;
+
+                // La lista guarda su propia copia de la bala
+                BalaPtr Nueva = &NuevaBala;
+                Balas.InsertarInicio(Nueva);
+            }
+
+            // Mover los enemigos hacia el nucleo antes de revisar las balas
+            NodoEnemigoPtr EnemigoMovimiento = Enemigos.primero();
+            while (EnemigoMovimiento != nullptr)
+            {
+                EnemigoMovimiento->dato->r -= 0.25;
+                EnemigoMovimiento = EnemigoMovimiento->siguiente;
+            }
+
+            // Mover las balas y revisar sus impactos
+            NodoBalaPtr Actual = Balas.primero();
+            while (Actual != nullptr)
+            {
+                BalaPtr BalaActual = Actual->dato;
+                BalaActual->x += BalaActual->vx;
+                BalaActual->y += BalaActual->vy;
+                bool EliminarBala = false;
+
+                // Buscar el primer enemigo que toca la bala
+                NodoEnemigoPtr EnemigoColision = Enemigos.primero();
+                while (EnemigoColision != nullptr)
+                {
+                    EnemigoPtr EnemigoActual = EnemigoColision->dato;
+                    double xEnemigo = 400 + cos(EnemigoActual->theta) * EnemigoActual->r;
+                    double yEnemigo = 310 + sin(EnemigoActual->theta) * EnemigoActual->r;
+                    double dx = BalaActual->x - xEnemigo;
+                    double dy = BalaActual->y - yEnemigo;
+                    double RadioChoque = 5 + EnemigoActual->radio;
+
+                    if (dx * dx + dy * dy <= RadioChoque * RadioChoque)
+                    {
+                        EliminarBala = true;
+                        if (BalaActual->color == EnemigoActual->color)
+                        {
+                            // El color correcto quita una vida
+                            EnemigoActual->vida--;
+                            if (EnemigoActual->vida <= 0)
+                            {
+                                EnemigosEliminados++;
+                                Combo++;
+                                // Eliminar tambien libera la memoria del enemigo
+                                Enemigos.Eliminar(EnemigoColision);
+                            }
+                        }
+                        else
+                        {
+                            // El color incorrecto empuja al enemigo
+                            EnemigoActual->r += 9;
+                            Combo = 0;
+                        }
+                        break;
+                    }
+                    EnemigoColision = EnemigoColision->siguiente;
+                }
+
+                // Las balas se eliminan al alejarse 320 unidades del centro
+                double dxCentro = BalaActual->x - 400;
+                double dyCentro = BalaActual->y - 310;
+                if (dxCentro * dxCentro + dyCentro * dyCentro > 320 * 320)
+                    EliminarBala = true;
+
+                if (EliminarBala)
+                    Actual = Balas.Eliminar(Actual);
+                else
+                    Actual = Actual->siguiente;
+            }
+
             // Pintar el fondo
             al_clear_to_color(Fondo);
 
@@ -227,37 +354,76 @@ int main(int argc, char* argv[])
             al_draw_text(Fuente, Crema, 400, 35,
                          ALLEGRO_ALIGN_CENTRE, "FASE ORBITAL");
 
-            al_draw_text(Fuente, Morado, 400, 75,
-                         ALLEGRO_ALIGN_CENTRE, "Version inicial");
-
             // Dibujar la orbita
             al_draw_circle(400, 310, Radio, Morado, 3);
 
-            // Dibujar el nucleo del centro
-            al_draw_filled_circle(400, 310, 45, Morado);
+            // El nucleo cambia al color que seleccionamos
+            al_draw_filled_circle(400, 310, 45, Colores[ColorSeleccionado]);
             al_draw_filled_circle(400, 310, 20, Crema);
 
-            // Dibujar y mover los enemigos
-            for (int i = 0; i < Cantidad; i++)
-            {
-                // Cada enemigo se va acercando al centro
-                DistanciaEnemigo[i] -= 0.25f;
+            // Dibujar los enemigos de la lista
+            NodoEnemigoPtr NodoActual = Enemigos.primero();
 
-                // Si llega al centro vuelve a aparecer afuera
-                if (DistanciaEnemigo[i] < 50)
+            while (NodoActual != nullptr)
+            {
+                EnemigoPtr EnemigoActual = NodoActual->dato;
+
+                // Calcular la posicion del enemigo
+                float x = 400 + cos(EnemigoActual->theta) * EnemigoActual->r;
+                float y = 310 + sin(EnemigoActual->theta) * EnemigoActual->r;
+
+                if (EnemigoActual->tipo == TipoEnemigo::Dron)
                 {
-                    AnguloEnemigo[i] = (rand() % 628) / 100.0f;
-                    DistanciaEnemigo[i] = 250 + rand() % 100;
-                    ColorEnemigo[i] = rand() % 3;
+                    // Dibujar el dron como un circulo
+                    al_draw_filled_circle(
+                        x, y,
+                        EnemigoActual->radio,
+                        Colores[EnemigoActual->color]
+                    );
+
+                    al_draw_circle(
+                        x, y,
+                        EnemigoActual->radio,
+                        Crema, 2
+                    );
+                }
+                else if (EnemigoActual->tipo == TipoEnemigo::Tanque)
+                {
+                    // Dibujar el tanque como un cuadrado
+                    float RadioTanque = EnemigoActual->radio;
+
+                    al_draw_filled_rectangle(
+                        x - RadioTanque,
+                        y - RadioTanque,
+                        x + RadioTanque,
+                        y + RadioTanque,
+                        Colores[EnemigoActual->color]
+                    );
+
+                    al_draw_rectangle(
+                        x - RadioTanque,
+                        y - RadioTanque,
+                        x + RadioTanque,
+                        y + RadioTanque,
+                        Crema, 2
+                    );
+
+                    // Mostrar la vida del tanque
+                    std::string TextoVida = std::to_string(EnemigoActual->vida);
+
+                    al_draw_text(
+                        Fuente,
+                        Crema,
+                        x,
+                        y - RadioTanque - 25,
+                        ALLEGRO_ALIGN_CENTRE,
+                        TextoVida.c_str()
+                    );
                 }
 
-                // Calcular donde se dibuja el enemigo
-                float x = 400 + cos(AnguloEnemigo[i]) * DistanciaEnemigo[i];
-                float y = 310 + sin(AnguloEnemigo[i]) * DistanciaEnemigo[i];
-
-                al_draw_filled_circle(x, y, 11, Colores[ColorEnemigo[i]]);
-                al_draw_circle(x, y, 11, Crema, 2);
+                NodoActual = NodoActual->siguiente;
             }
+
 
             // Posicion de la nave
             float x = 400 + cos(Angulo) * Radio;
@@ -266,6 +432,28 @@ int main(int argc, char* argv[])
             // Dibujar la nave
             al_draw_filled_circle(x, y, 12, Coral);
             al_draw_circle(x, y, 12, Crema, 2);
+
+            // Dibujar las balas que siguen en pantalla
+            NodoBalaPtr BalaDibujo = Balas.primero();
+            while (BalaDibujo != nullptr)
+            {
+                al_draw_filled_circle(
+                    BalaDibujo->dato->x,
+                    BalaDibujo->dato->y,
+                    5,
+                    Colores[BalaDibujo->dato->color]
+                );
+                BalaDibujo = BalaDibujo->siguiente;
+            }
+
+            // Mostrar cuantos enemigos se han eliminado
+            std::string TextoPuntos = "Enemigos: " + std::to_string(EnemigosEliminados);
+            al_draw_text(Fuente, Crema, 780, 95, ALLEGRO_ALIGN_RIGHT, TextoPuntos.c_str());
+            std::string TextoCombo = "Combo: " + std::to_string(Combo);
+            al_draw_text(Fuente, Crema, 780, 125, ALLEGRO_ALIGN_RIGHT, TextoCombo.c_str());
+
+            // Mostrar el color que esta usando la nave
+            al_draw_filled_circle(750, 175, 9, Colores[ColorSeleccionado]);
 
             // Instrucciones de los controles
             al_draw_text(Fuente, Crema, 400, 520,
