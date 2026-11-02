@@ -8,14 +8,14 @@
 
 namespace {
 ALLEGRO_COLOR textoColor() { return al_map_rgb(235, 242, 246); }
-ALLEGRO_COLOR acento() { return al_map_rgb(123, 212, 195); }
-ALLEGRO_COLOR fondo() { return al_map_rgb(20, 29, 43); }
-ALLEGRO_COLOR borde() { return al_map_rgb(103, 129, 157); }
+ALLEGRO_COLOR acento() { return al_map_rgb(110, 217, 241); }
+ALLEGRO_COLOR fondo() { return al_map_rgb(20, 17, 43); }
+ALLEGRO_COLOR borde() { return al_map_rgb(58, 52, 90); }
 ALLEGRO_COLOR cian() { return al_map_rgb(68, 210, 225); }
 ALLEGRO_COLOR magenta() { return al_map_rgb(238, 91, 176); }
 ALLEGRO_COLOR ambar() { return al_map_rgb(245, 183, 73); }
-ALLEGRO_COLOR panel() { return al_map_rgb(29, 42, 60); }
-ALLEGRO_COLOR panelAlterno() { return al_map_rgb(35, 49, 68); }
+ALLEGRO_COLOR panel() { return al_map_rgb(33, 29, 62); }
+ALLEGRO_COLOR panelAlterno() { return al_map_rgb(42, 36, 72); }
 
 void texto(ALLEGRO_FONT* fuente, float x, float y, const std::string& contenido, float escala = 1.5f) {
 	const int ancho = al_get_text_width(fuente, contenido.c_str());
@@ -298,16 +298,35 @@ void VistaAllegro::ProcesarEvento(const ALLEGRO_EVENT& evento) {
 }
 
 void VistaAllegro::Dibujar(const std::string& aviso) {
-	al_clear_to_color(fondo());
-	if (pantalla == Pantalla::Menu) DibujarMenu();
-	if (pantalla == Pantalla::Estadisticas) DibujarEstadisticas();
-	if (pantalla == Pantalla::Ranking) DibujarRanking();
-	if (pantalla == Pantalla::VistaPrevia) DibujarVistaPrevia();
-	if (pantalla != Pantalla::Menu) boton(fuente, 24, 540, 120, "Volver");
-	if (!aviso.empty()) texto(fuente, 170, 552, aviso, 1.0f);
+
+    // Pintamos el fondo oscuro de la pantalla
+    // Ya no ponemos circulos de adorno ni lineas
+    al_clear_to_color(fondo());
+
+    // Revisamos en cual pantalla estamos para dibujarla
+    if (pantalla == Pantalla::Menu)
+        DibujarMenu();
+
+    if (pantalla == Pantalla::Estadisticas)
+        DibujarEstadisticas();
+
+    if (pantalla == Pantalla::Ranking)
+        DibujarRanking();
+
+    if (pantalla == Pantalla::VistaPrevia)
+        DibujarVistaPrevia();
+
+    // Ponemos el boton para regresar al menu
+    if (pantalla != Pantalla::Menu)
+        boton(fuente, 24, 540, 120, "Volver");
+
+    // Mostramos algun mensaje si hace falta
+    if (!aviso.empty())
+        texto(fuente, 170, 552, aviso, 1.0f);
 }
 
 void VistaAllegro::DibujarMenu() {
+	// Menu con los mismos colores del juego
 	texto(fuente, 256, 70, "FASE ORBITAL", 3.0f);
 	al_draw_circle(400, 165, 30, borde(), 2);
 	al_draw_filled_circle(400, 165, 10, cian());
@@ -319,7 +338,8 @@ void VistaAllegro::DibujarMenu() {
 }
 
 void VistaAllegro::DibujarEstadisticas() {
-	texto(fuente, 40, 32, "Estadisticas", 3.0f);
+	// Titulo grande y las estadisticas del jugador
+	texto(fuente, 40, 32, "ESTADISTICAS", 3.0f);
 	if (seleccionado == nullptr) {
 		texto(fuente, 40, 150, "Sin partidas registradas");
 		return;
@@ -349,8 +369,9 @@ void VistaAllegro::DibujarEstadisticas() {
 }
 
 void VistaAllegro::DibujarRanking() {
-	texto(fuente, 40, 32, "Ranking", 3.0f);
-	texto(fuente, 40, 88, "Top 10");
+	// Tabla simple, no tocamos los datos del ranking
+	texto(fuente, 40, 32, "TOP 10 HISTORICO", 2.7f);
+	texto(fuente, 40, 88, "Mejores puntajes");
 	if (ranking->isVacia()) {
 		texto(fuente, 40, 150, "Sin partidas registradas");
 		return;

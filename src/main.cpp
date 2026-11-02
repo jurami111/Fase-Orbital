@@ -77,10 +77,10 @@ int main(int argc, char* argv[])
     al_register_event_source(Cola, al_get_mouse_event_source());
 
     // Colores de la interfaz
-    ALLEGRO_COLOR Fondo = al_map_rgb(20, 29, 43);
+    ALLEGRO_COLOR Fondo = al_map_rgb(20, 17, 43);
     ALLEGRO_COLOR Crema = al_map_rgb(235, 242, 246);
-    ALLEGRO_COLOR Morado = al_map_rgb(103, 129, 157);
-    ALLEGRO_COLOR Coral = al_map_rgb(123, 212, 195);
+    ALLEGRO_COLOR Morado = al_map_rgb(58, 52, 90);
+    ALLEGRO_COLOR Coral = al_map_rgb(110, 217, 241);
 
     // Colores que pueden tener los enemigos
     ALLEGRO_COLOR Colores[3] = {
@@ -92,12 +92,13 @@ int main(int argc, char* argv[])
     // Para saber si se presionan las teclas
     bool Salir = false;
     bool EnMenu = true;
+    bool EnPausa = false; // P pone pausa y tambien vuelve al juego
     bool Izquierda = false;
     bool Derecha = false;
 
     // Posicion de la nave en la orbita
     float Angulo = 0;
-    float Radio = 150;
+    float Radio = 150; // dejamos el radio actual para no cambiar las colisiones
 
     // Guardar las balas que dispara la nave
     ListaBalas Balas;
@@ -164,7 +165,9 @@ int main(int argc, char* argv[])
         if (Evento.type == ALLEGRO_EVENT_MOUSE_BUTTON_DOWN && Evento.mouse.button == 1) {
             const float x = Evento.mouse.x;
             const float y = Evento.mouse.y;
-            if (EnMenu && x >= 280 && x <= 520) {
+            if (!EnMenu && EnPausa && x >= 335 && x <= 465 && y >= 270 && y <= 313) {
+                EnPausa = false; // boton Seguir de la pausa
+            } else if (EnMenu && x >= 280 && x <= 520) {
                 if (y >= 180 && y <= 220) EnMenu = false;
                 else if ((y >= 240 && y <= 280) || (y >= 300 && y <= 340)) {
                     const bool EsRanking = y <= 280;
@@ -174,8 +177,6 @@ int main(int argc, char* argv[])
                         EsRanking ? Pantalla::Ranking : Pantalla::Estadisticas,
                         HistorialCargado ? "" : "No se pudo cargar el historial", Captura);
                 } else if (y >= 360 && y <= 400) Salir = true;
-            } else if (!EnMenu && x >= 20 && x <= 140 && y >= 95 && y <= 131) {
-                EnMenu = true;
             }
             Izquierda = false;
             Derecha = false;
@@ -191,23 +192,26 @@ int main(int argc, char* argv[])
             if (Evento.keyboard.keycode == ALLEGRO_KEY_ESCAPE)
             {
                 if (EnMenu) Salir = true;
-                else EnMenu = true;
+                else { EnMenu = true; EnPausa = false; }
                 Izquierda = false;
                 Derecha = false;
             }
 
-            if (!EnMenu && Evento.keyboard.keycode == ALLEGRO_KEY_LEFT)
+            if (!EnMenu && Evento.keyboard.keycode == ALLEGRO_KEY_P)
+                EnPausa = !EnPausa; // no afecta las balas, solo detiene el juego
+
+            if (!EnMenu && !EnPausa && Evento.keyboard.keycode == ALLEGRO_KEY_LEFT)
                 Izquierda = true;
 
-            if (!EnMenu && Evento.keyboard.keycode == ALLEGRO_KEY_RIGHT)
+            if (!EnMenu && !EnPausa && Evento.keyboard.keycode == ALLEGRO_KEY_RIGHT)
                 Derecha = true;
 
             // Cambiar el color de las proximas balas
-            if (!EnMenu && (Evento.keyboard.keycode == ALLEGRO_KEY_1 || Evento.keyboard.keycode == ALLEGRO_KEY_J))
+            if (!EnMenu && !EnPausa && (Evento.keyboard.keycode == ALLEGRO_KEY_1 || Evento.keyboard.keycode == ALLEGRO_KEY_J))
                 ColorSeleccionado = 0;
-            if (!EnMenu && (Evento.keyboard.keycode == ALLEGRO_KEY_2 || Evento.keyboard.keycode == ALLEGRO_KEY_K))
+            if (!EnMenu && !EnPausa && (Evento.keyboard.keycode == ALLEGRO_KEY_2 || Evento.keyboard.keycode == ALLEGRO_KEY_K))
                 ColorSeleccionado = 1;
-            if (!EnMenu && (Evento.keyboard.keycode == ALLEGRO_KEY_3 || Evento.keyboard.keycode == ALLEGRO_KEY_L))
+            if (!EnMenu && !EnPausa && (Evento.keyboard.keycode == ALLEGRO_KEY_3 || Evento.keyboard.keycode == ALLEGRO_KEY_L))
                 ColorSeleccionado = 2;
         }
 
@@ -226,14 +230,15 @@ int main(int argc, char* argv[])
         {
             if (EnMenu) {
                 al_clear_to_color(Fondo);
-                al_draw_text(Fuente, Crema, 400, 55, ALLEGRO_ALIGN_CENTRE, "FASE ORBITAL");
-                al_draw_circle(400, 125, 25, Morado, 2);
-                al_draw_filled_circle(400, 125, 10, Coral);
+                // Dejamos el menu con el fondo limpio, sin circulos de adorno
+                al_draw_text(Fuente, Colores[0], 400, 55, ALLEGRO_ALIGN_CENTRE, "FASE ORBITAL");
+                al_draw_filled_circle(400, 125, 28, Morado);
+                al_draw_filled_circle(400, 125, 17, Crema);
                 const char* Botones[] = {"Jugar", "Ranking", "Estadisticas", "Salir"};
                 for (int indice = 0; indice < 4; indice++) {
                     const int y = 180 + indice * 60;
-                    al_draw_filled_rectangle(280, y, 520, y + 40, Fondo);
-                    al_draw_rectangle(280, y, 520, y + 40, Coral, 1);
+                    al_draw_filled_rectangle(280, y, 520, y + 40, al_map_rgb(36, 31, 66));
+                    al_draw_rectangle(280, y, 520, y + 40, indice % 2 == 0 ? Colores[0] : Colores[1], 1);
                     al_draw_text(Fuente, Crema, 400, y + (40 - al_get_font_line_height(Fuente)) / 2,
                                  ALLEGRO_ALIGN_CENTRE, Botones[indice]);
                 }
@@ -252,6 +257,8 @@ int main(int argc, char* argv[])
                 continue;
             }
 
+            // Si esta en pausa no movemos nada, pero si dibujamos la pantalla
+            if (!EnPausa) {
             // Mover la nave
             if (Izquierda)
                 Angulo -= 0.04f;
@@ -347,19 +354,28 @@ int main(int argc, char* argv[])
                     Actual = Actual->siguiente;
             }
 
+            } // termina la parte que se congela con la pausa
+
             // Pintar el fondo
             al_clear_to_color(Fondo);
 
-            // Nombre del juego
-            al_draw_text(Fuente, Crema, 400, 35,
-                         ALLEGRO_ALIGN_CENTRE, "FASE ORBITAL");
+            // No dibujamos rayas ni circulos extra en el fondo
+            // Mas abajo dejamos solo la orbita por donde va la nave
 
-            // Dibujar la orbita
-            al_draw_circle(400, 310, Radio, Morado, 3);
+            // Marcadores arriba, como en el juego de referencia
+            al_draw_text(Fuente, Crema, 22, 20, 0,
+                         std::to_string(EnemigosEliminados * 100).c_str());
+            std::string DatosArriba = "oleada 1   combo x" + std::to_string(Combo);
+            al_draw_text(Fuente, Crema, 778, 22, ALLEGRO_ALIGN_RIGHT, DatosArriba.c_str());
+
+            // Este es el unico circulo grande que dejamos
+            // Marca el camino que sigue la nave al moverse
+            al_draw_circle(400, 310, Radio, al_map_rgb(79, 74, 117), 2);
 
             // El nucleo cambia al color que seleccionamos
-            al_draw_filled_circle(400, 310, 45, Colores[ColorSeleccionado]);
-            al_draw_filled_circle(400, 310, 20, Crema);
+            al_draw_filled_circle(400, 310, 40, al_map_rgb(35, 55, 80));
+            al_draw_circle(400, 310, 29, Colores[ColorSeleccionado], 3);
+            al_draw_filled_circle(400, 310, 24, Crema);
 
             // Dibujar los enemigos de la lista
             NodoEnemigoPtr NodoActual = Enemigos.primero();
@@ -430,8 +446,11 @@ int main(int argc, char* argv[])
             float y = 310 + sin(Angulo) * Radio;
 
             // Dibujar la nave
-            al_draw_filled_circle(x, y, 12, Coral);
-            al_draw_circle(x, y, 12, Crema, 2);
+            // La nave es un triangulo sencillo que apunta hacia afuera
+            float fx = cos(Angulo), fy = sin(Angulo);
+            al_draw_filled_triangle(x + fx * 15, y + fy * 15,
+                x - fx * 9 - fy * 8, y - fy * 9 + fx * 8,
+                x - fx * 9 + fy * 8, y - fy * 9 - fx * 8, Coral);
 
             // Dibujar las balas que siguen en pantalla
             NodoBalaPtr BalaDibujo = Balas.primero();
@@ -446,26 +465,29 @@ int main(int argc, char* argv[])
                 BalaDibujo = BalaDibujo->siguiente;
             }
 
-            // Mostrar cuantos enemigos se han eliminado
-            std::string TextoPuntos = "Enemigos: " + std::to_string(EnemigosEliminados);
-            al_draw_text(Fuente, Crema, 780, 95, ALLEGRO_ALIGN_RIGHT, TextoPuntos.c_str());
-            std::string TextoCombo = "Combo: " + std::to_string(Combo);
-            al_draw_text(Fuente, Crema, 780, 125, ALLEGRO_ALIGN_RIGHT, TextoCombo.c_str());
+            // Barra de colores de abajo, sin imagenes ni botones complicados
+            const char* NombresColores[3] = {"Cian", "Magenta", "Ambar"};
+            for (int i = 0; i < 3; i++) {
+                float bx = 20 + i * 190;
+                al_draw_filled_rectangle(bx, 535, bx + 180, 583,
+                    i == ColorSeleccionado ? Colores[i] : al_map_rgb(36, 31, 66));
+                al_draw_rectangle(bx, 535, bx + 180, 583, Colores[i], 2);
+                ALLEGRO_COLOR ColorTexto = i == ColorSeleccionado ? Fondo : Crema;
+                al_draw_text(Fuente, ColorTexto, bx + 90, 545,
+                             ALLEGRO_ALIGN_CENTRE, NombresColores[i]);
+            }
+            al_draw_filled_rectangle(590, 535, 780, 583, al_map_rgb(36, 31, 66));
+            al_draw_rectangle(590, 535, 780, 583, Morado, 2);
+            al_draw_text(Fuente, Crema, 685, 545, ALLEGRO_ALIGN_CENTRE, "Pulso");
 
-            // Mostrar el color que esta usando la nave
-            al_draw_filled_circle(750, 175, 9, Colores[ColorSeleccionado]);
-
-            // Instrucciones de los controles
-            al_draw_text(Fuente, Crema, 400, 520,
-                         ALLEGRO_ALIGN_CENTRE, "Flechas: mover nave");
-
-            al_draw_text(Fuente, Morado, 400, 550,
-                         ALLEGRO_ALIGN_CENTRE, "ESC: menu");
-
-            al_draw_filled_rectangle(20, 95, 140, 131, Fondo);
-            al_draw_rectangle(20, 95, 140, 131, Coral, 1);
-            al_draw_text(Fuente, Crema, 80, 95 + (36 - al_get_font_line_height(Fuente)) / 2,
-                         ALLEGRO_ALIGN_CENTRE, "Volver");
+            // La pausa se dibuja encima, pero el juego no se sigue moviendo
+            if (EnPausa) {
+                al_draw_filled_rectangle(0, 0, 800, 525, al_map_rgba(20, 17, 43, 225));
+                al_draw_text(Fuente, Crema, 400, 220, ALLEGRO_ALIGN_CENTRE, "Pausa");
+                al_draw_filled_rectangle(335, 270, 465, 313, Crema);
+                al_draw_text(Fuente, Fondo, 400, 280, ALLEGRO_ALIGN_CENTRE, "Seguir");
+            }
+            // P: pausa, ESC: menu. La barra de abajo es solo visual por ahora
             if (!HistorialCargado) {
                 al_draw_text(Fuente, Coral, 400, 575, ALLEGRO_ALIGN_CENTRE,
                              "No se pudo cargar el historial");
