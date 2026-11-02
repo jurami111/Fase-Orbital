@@ -17,6 +17,7 @@
 #include "Estructuras/ListaEnemigos.h"
 #include "Motor/Oleada.h"
 #include "Estructuras/ColaSpawn.h"
+#include "Estructuras/RondaJugadores.h"
 
 // Agrega un enemigo a la lista usando los datos de la cola
 void CrearEnemigo(ListaEnemigos& Enemigos, DatosSpawn Datos, int& SiguienteId, int OleadaActual)
@@ -177,6 +178,16 @@ int main(int argc, char* argv[])
     bool EnMenu = true;
     bool EnNombre = false;
     std::string NombreJugador;
+    bool EnTurno = false; // para mostrar el siguiente turno
+    int CantidadJugadores = 1;
+    int Registrados = 0;
+    int IndiceActual = 0;
+    Jugador DatosJugadores[6];
+    RondaJugadores Ronda;
+    ColaSpawn ColaOriginal; // guarda la oleada para los demas jugadores
+    int JugadoresTurno = 0;
+    int TurnosJugados = 0;
+    bool Horario = true;
     bool EnPausa = false;
     bool Izquierda = false;
     bool Derecha = false;
@@ -224,6 +235,133 @@ int main(int argc, char* argv[])
     EnemigosPendientes = GeneradorOleadas.Generar(Semilla, Oleada);
     TickOleada = 0;
 
+    // guarda lo que lleva cada jugador
+    auto GuardarJugador = [&]()
+    {
+        DatosPartida.puntaje = Puntaje;
+        DatosPartida.combo = Combo;
+        DatosPartida.carga_pulso = CargaPulso;
+        DatosPartida.vida_nucleo = VidaNucleo;
+        DatosPartida.numero_oleada = Oleada;
+        DatosJugadores[IndiceActual] = DatosPartida;
+    };
+
+    // prepara el turno del que sigue
+    auto PrepararTurno = [&]()
+    {
+        NodoJugadorPtr Nodo = Ronda.VerActual();
+        if (Nodo == nullptr) return;
+        IndiceActual = int(Nodo->dato - DatosJugadores);
+        DatosPartida = DatosJugadores[IndiceActual];
+        Puntaje = DatosPartida.puntaje;
+        Combo = 0;
+        CargaPulso = DatosPartida.carga_pulso;
+        VidaNucleo = DatosPartida.vida_nucleo;
+        Angulo = 0;
+        ColorSeleccionado = 0;
+        TiempoDisparo = 0;
+        PulsoActivo = false;
+        RadioPulso = 20;
+        TickOleada = 0;
+        SiguienteId = 1;
+        OleadaTerminada = false;
+        EsperaOleada = 0;
+        Izquierda = false;
+        Derecha = false;
+        EnPausa = false;
+        // limpia las listas antes del siguiente turno
+        NodoBalaPtr BalaVieja = Balas.primero();
+        while (BalaVieja != nullptr)
+        {
+            BalaVieja = Balas.Eliminar(BalaVieja);
+        }
+        NodoEnemigoPtr EnemigoViejo = Enemigos.primero();
+        while (EnemigoViejo != nullptr)
+        {
+            EnemigoViejo = Enemigos.Eliminar(EnemigoViejo);
+        }
+        EnemigosPendientes = ColaOriginal; // copia la cola para este jugador
+        EnTurno = true;
+    };
+
+    // empieza cuando ya se anotaron todos
+    auto IniciarMultijugador = [&]()
+    {
+        EnNombre = false;
+        EnMenu = false;
+        Oleada = 1;
+        Horario = true;
+        TurnosJugados = 0;
+        JugadoresTurno = Ronda.tamano();
+        ColaOriginal = GeneradorOleadas.Generar(Semilla, Oleada);
+        PrepararTurno();
+    };
+
+    auto RegistrarNombre = [&]()
+    {
+        if (NombreJugador.empty()) return;
+        Jugador& Nuevo = DatosJugadores[Registrados];
+        Nuevo = Jugador{};
+        std::strncpy(Nuevo.Alias, NombreJugador.c_str(), sizeof(Nuevo.Alias) - 1);
+        Nuevo.Alias[sizeof(Nuevo.Alias) - 1] = '\0';
+        Nuevo.vida_nucleo = 100;
+        JugadorPtr Puntero = &Nuevo;
+        Ronda.AgregarJugador(Puntero);
+        Registrados++;
+        NombreJugador.clear();
+        if (Registrados == CantidadJugadores) IniciarMultijugador();
+    };
+
+    // pasa al otro jugador o a otra oleada
+    auto TerminarTurno = [&](bool Eliminado)
+    {
+        GuardarJugador();
+        if (Eliminado)
+        {
+            DatosJugadores[IndiceActual].posicion = Ronda.tamano();
+            Ronda.EliminarActual(Horario);
+        }
+        else Ronda.AvanzarJugador(Horario);
+
+        TurnosJugados++;
+        if (TurnosJugados >= JugadoresTurno)
+        {
+            if (Ronda.tamano() <= 1 || Oleada >= TotalOleadas)
+            {
+                GameOver = Ronda.tamano() == 0;
+                Victoria = !GameOver;
+                EnTurno = false;
+                return;
+            }
+            Oleada++;
+            Horario = !Horario;
+            JugadoresTurno = Ronda.tamano();
+            TurnosJugados = 0;
+            ColaOriginal = GeneradorOleadas.Generar(Semilla, Oleada);
+            // la siguiente ronda empieza con el ultimo que jugo
+            if (!Eliminado) Ronda.AvanzarJugador(Horario);
+        }
+        if (Ronda.tamano() == 0)
+        {
+            GameOver = true;
+            EnTurno = false;
+            return;
+        }
+        PrepararTurno();
+    };
+
+    auto ReiniciarRegistro = [&]()
+    {
+        while (Ronda.VerActual() != nullptr) Ronda.EliminarActual(true);
+        Registrados = 0;
+        CantidadJugadores = 1;
+        IndiceActual = 0;
+        NombreJugador.clear();
+        EnNombre = true;
+        EnTurno = false;
+        PartidaGuardada = false;
+    };
+
     // Se inicia el temporizador para actualizar el juego
     al_start_timer(Timer);
 
@@ -258,14 +396,17 @@ int main(int argc, char* argv[])
             const float y = Evento.mouse.y; // Posicion vertical
 
             
-            // se confirma el nombre con el boton de inicio
-            if (EnNombre && x >= 280 && x <= 520 && y >= 340 && y <= 385 && !NombreJugador.empty())
+            // botones del registro
+            if (EnNombre && Registrados == 0 && x >= 270 && x <= 530 && y >= 200 && y <= 250)
             {
-                std::strncpy(DatosPartida.Alias, NombreJugador.c_str(), sizeof(DatosPartida.Alias) - 1);
-                DatosPartida.Alias[sizeof(DatosPartida.Alias) - 1] = '\0';
-                EnNombre = false;
+                CantidadJugadores++;
+                if (CantidadJugadores > 6) CantidadJugadores = 1;
             }
-            else if (EnNombre && x >= 280 && x <= 520 && y >= 405 && y <= 445)
+            else if (EnNombre && x >= 280 && x <= 520 && y >= 400 && y <= 445)
+            {
+                if (!NombreJugador.empty()) RegistrarNombre();
+            }
+            else if (EnNombre && x >= 280 && x <= 520 && y >= 470 && y <= 515)
             {
                 EnNombre = false;
                 EnMenu = true;
@@ -312,7 +453,7 @@ int main(int argc, char* argv[])
 
                     GameOver = false; // se quitan la derrota
                     Victoria = false; // se quitan la victoria
-                    EnMenu = false; EnNombre = true; NombreJugador.clear(); // Se pide el nombre antes de jugar
+                    EnMenu = false; ReiniciarRegistro(); // Se registran los jugadores
 
                     // Se preparan la primera oleada de la nueva partida
                     EnemigosPendientes = GeneradorOleadas.Generar(Semilla, Oleada);
@@ -374,7 +515,7 @@ int main(int argc, char* argv[])
                     EnemigosPendientes = GeneradorOleadas.Generar(Semilla, Oleada);
                     TickOleada = 0;
 
-                    EnMenu = false; EnNombre = true; NombreJugador.clear(); // Se pide el nombre antes de jugar
+                    EnMenu = false; ReiniciarRegistro(); // Se registran los jugadores
                 }
 
                 // botones de ranking y estadisticas
@@ -442,38 +583,40 @@ int main(int argc, char* argv[])
             // al terminar se puede regresar al menu con ESC
             // El reinicio se hace cuando se vuelve a presionar Jugar
 
+            if (EnTurno && Evento.keyboard.keycode == ALLEGRO_KEY_ENTER) EnTurno = false;
+
             // La tecla P pone y quita la pausa
-            if (!EnMenu && !EnNombre && !GameOver && !Victoria && Evento.keyboard.keycode == ALLEGRO_KEY_P)
+            if (!EnMenu && !EnNombre && !EnTurno && !GameOver && !Victoria && Evento.keyboard.keycode == ALLEGRO_KEY_P)
             {
                 EnPausa = !EnPausa;
             }
 
             // la flecha izquierda mueve la nave en una direccion
-            if (!EnMenu && !EnNombre && !EnPausa && Evento.keyboard.keycode == ALLEGRO_KEY_LEFT)
+            if (!EnMenu && !EnNombre && !EnTurno && !EnPausa && Evento.keyboard.keycode == ALLEGRO_KEY_LEFT)
             {
                 Izquierda = true;
             }
 
             // La flecha derecha la mueve en la otra direccion
-            if (!EnMenu && !EnNombre && !EnPausa && Evento.keyboard.keycode == ALLEGRO_KEY_RIGHT)
+            if (!EnMenu && !EnNombre && !EnTurno && !EnPausa && Evento.keyboard.keycode == ALLEGRO_KEY_RIGHT)
             {
                 Derecha = true;
             }
 
             // se selecciona el color cian con 1 o J
-            if (!EnMenu && !EnNombre && !EnPausa && (Evento.keyboard.keycode == ALLEGRO_KEY_1 || Evento.keyboard.keycode == ALLEGRO_KEY_J))
+            if (!EnMenu && !EnNombre && !EnTurno && !EnPausa && (Evento.keyboard.keycode == ALLEGRO_KEY_1 || Evento.keyboard.keycode == ALLEGRO_KEY_J))
             {
                 ColorSeleccionado = 0;
             }
 
             // Se selecciona magenta con 2 o K
-            if (!EnMenu && !EnNombre && !EnPausa && (Evento.keyboard.keycode == ALLEGRO_KEY_2 || Evento.keyboard.keycode == ALLEGRO_KEY_K))
+            if (!EnMenu && !EnNombre && !EnTurno && !EnPausa && (Evento.keyboard.keycode == ALLEGRO_KEY_2 || Evento.keyboard.keycode == ALLEGRO_KEY_K))
             {
                 ColorSeleccionado = 1;
             }
 
             // se selecciona ambar con 3 o L
-            if (!EnMenu && !EnNombre && !EnPausa && (Evento.keyboard.keycode == ALLEGRO_KEY_3 || Evento.keyboard.keycode == ALLEGRO_KEY_L))
+            if (!EnMenu && !EnNombre && !EnTurno && !EnPausa && (Evento.keyboard.keycode == ALLEGRO_KEY_3 || Evento.keyboard.keycode == ALLEGRO_KEY_L))
             {
                 ColorSeleccionado = 2;
             }
@@ -487,9 +630,7 @@ int main(int argc, char* argv[])
             if (Tecla == ALLEGRO_KEY_BACKSPACE && !NombreJugador.empty()) NombreJugador.pop_back();
             else if (Tecla == ALLEGRO_KEY_ENTER && !NombreJugador.empty())
             {
-                std::strncpy(DatosPartida.Alias, NombreJugador.c_str(), sizeof(DatosPartida.Alias) - 1);
-                DatosPartida.Alias[sizeof(DatosPartida.Alias) - 1] = '\0';
-                EnNombre = false;
+                RegistrarNombre();
             }
             else if (Letra >= 32 && Letra <= 126 && NombreJugador.size() < sizeof(DatosPartida.Alias) - 1)
             {
@@ -499,7 +640,7 @@ int main(int argc, char* argv[])
         }
 
         // el pulso se activa solo cuando la carga esta completa
-        if (Evento.type == ALLEGRO_EVENT_KEY_DOWN && !EnMenu && !EnNombre && !EnPausa && !GameOver && !Victoria && Evento.keyboard.keycode == ALLEGRO_KEY_SPACE && CargaPulso == 100 && !PulsoActivo)
+        if (Evento.type == ALLEGRO_EVENT_KEY_DOWN && !EnMenu && !EnNombre && !EnTurno && !EnPausa && !GameOver && !Victoria && Evento.keyboard.keycode == ALLEGRO_KEY_SPACE && CargaPulso == 100 && !PulsoActivo)
         {
             PulsoActivo = true;
             RadioPulso = 20;
@@ -524,21 +665,49 @@ int main(int argc, char* argv[])
         // El temporizador actualiza el juego varias veces por segundo
         if (Evento.type == ALLEGRO_EVENT_TIMER)
         {
-            // pantalla para ingresar el nombre del jugador
+            // registro de jugadores
             if (EnNombre)
             {
                 al_clear_to_color(Fondo);
-                al_draw_text(Fuente, Colores[0], 400, 115, ALLEGRO_ALIGN_CENTRE, "NOMBRE DEL JUGADOR");
-                al_draw_text(Fuente, Crema, 400, 190, ALLEGRO_ALIGN_CENTRE, "Escriba su nombre para comenzar");
-                al_draw_filled_rectangle(220, 250, 580, 305, Morado);
-                al_draw_rectangle(220, 250, 580, 305, Colores[0], 2);
+                al_draw_text(Fuente, Colores[0], 400, 85, ALLEGRO_ALIGN_CENTRE, "REGISTRO MULTIJUGADOR");
+                std::string Titulo = "Jugador " + std::to_string(Registrados + 1) + " de " + std::to_string(CantidadJugadores);
+                al_draw_text(Fuente, Crema, 400, 140, ALLEGRO_ALIGN_CENTRE, Titulo.c_str());
+
+                // cantidad de personas
+                if (Registrados == 0)
+                {
+                    std::string Numero = "Jugadores: " + std::to_string(CantidadJugadores) + "  [+]";
+                    al_draw_filled_rectangle(270, 200, 530, 250, Morado);
+                    al_draw_rectangle(270, 200, 530, 250, Colores[2], 2);
+                    al_draw_text(Fuente, Colores[2], 400, 211, ALLEGRO_ALIGN_CENTRE, Numero.c_str());
+                }
+                else
+                {
+                    al_draw_text(Fuente, Colores[2], 400, 213, ALLEGRO_ALIGN_CENTRE, "Escriba el siguiente nombre");
+                }
+
+                // nombre
+                al_draw_filled_rectangle(250, 300, 550, 355, Morado);
+                al_draw_rectangle(250, 300, 550, 355, Colores[0], 2);
                 std::string TextoNombre = NombreJugador.empty() ? "Nombre..." : NombreJugador;
-                al_draw_text(Fuente, Crema, 400, 265, ALLEGRO_ALIGN_CENTRE, TextoNombre.c_str());
-                al_draw_filled_rectangle(280, 340, 520, 385, Colores[0]);
-                al_draw_text(Fuente, Fondo, 400, 350, ALLEGRO_ALIGN_CENTRE, "Comenzar");
-                al_draw_rectangle(280, 405, 520, 445, Colores[1], 2);
-                al_draw_text(Fuente, Crema, 400, 412, ALLEGRO_ALIGN_CENTRE, "Volver");
-                al_draw_text(Fuente, Crema, 400, 480, ALLEGRO_ALIGN_CENTRE, "Enter para iniciar, ESC para volver");
+                al_draw_text(Fuente, Crema, 400, 315, ALLEGRO_ALIGN_CENTRE, TextoNombre.c_str());
+
+                al_draw_filled_rectangle(280, 400, 520, 445, Colores[0]);
+                al_draw_text(Fuente, Fondo, 400, 410, ALLEGRO_ALIGN_CENTRE, Registrados + 1 == CantidadJugadores ? "Comenzar" : "Siguiente");
+                al_draw_rectangle(280, 470, 520, 515, Colores[1], 2);
+                al_draw_text(Fuente, Crema, 400, 480, ALLEGRO_ALIGN_CENTRE, "Volver");
+                al_flip_display();
+                continue;
+            }
+
+            if (EnTurno)
+            {
+                al_clear_to_color(Fondo);
+                al_draw_text(Fuente, Colores[0], 400, 170, ALLEGRO_ALIGN_CENTRE, "SIGUIENTE TURNO");
+                al_draw_text(Fuente, Crema, 400, 245, ALLEGRO_ALIGN_CENTRE, DatosPartida.Alias);
+                std::string Aviso = "Oleada " + std::to_string(Oleada) + " de " + std::to_string(TotalOleadas);
+                al_draw_text(Fuente, Crema, 400, 295, ALLEGRO_ALIGN_CENTRE, Aviso.c_str());
+                al_draw_text(Fuente, Colores[2], 400, 365, ALLEGRO_ALIGN_CENTRE, "Presione ENTER para jugar");
                 al_flip_display();
                 continue;
             }
@@ -616,24 +785,7 @@ int main(int argc, char* argv[])
                 // La oleada se revisa despues de las colisiones
                 // Asi tambien se puede comprobar si ya se gana
 
-                // si terminamos la oleada, contamos el tiempo de espera
-                if (OleadaTerminada)
-                {
-                    EsperaOleada--; // Vamos descontando el tiempo
-
-                    if (EsperaOleada <= 0)
-                    {
-                        Oleada++; // Se pasa a la siguiente oleada
-
-                        // Se preparan los enemigos que apareceran en esta oleada
-                        EnemigosPendientes = GeneradorOleadas.Generar(Semilla, Oleada);
-                        TickOleada = 0;
-
-                        OleadaTerminada = false; // Ya puede continuar
-                        Combo = 0; // Se reinicia el combo
-                    }
-                }
-
+                // cada jugador juega una oleada completa antes del siguiente turno
                 // Se revisa si ya debe aparecer otro enemigo
                 if (!OleadaTerminada)
                 {
@@ -958,27 +1110,16 @@ int main(int argc, char* argv[])
                     if (RadioPulso > 320) PulsoActivo = false;
                 }
 
-                // Se revisa si eliminamos todos los enemigos
-                if (!OleadaTerminada && Enemigos.vacia() && EnemigosPendientes.isVacia() &&!GameOver)
+                if (GameOver)
                 {
-                    if (Oleada >= TotalOleadas)
-                    {
-                        Victoria = true; // Se gana al completar la quinta oleada
-                    }
-                    else
-                    {
-                        OleadaTerminada = true; // terminamos la oleada actual
-                        EsperaOleada = 60; // Se espera antes de empezar otra
-
-                        // Se recuperan 8 puntos de vida al completar la oleada
-                        VidaNucleo += 8;
-
-                        // La vida nunca puede superar los 100 puntos
-                        if (VidaNucleo > 100)
-                        {
-                            VidaNucleo = 100;
-                        }
-                    }
+                    GameOver = false;
+                    TerminarTurno(true);
+                }
+                else if (!OleadaTerminada && Enemigos.vacia() && EnemigosPendientes.isVacia())
+                {
+                    VidaNucleo += 8;
+                    if (VidaNucleo > 100) VidaNucleo = 100;
+                    TerminarTurno(false);
                 }
             } // Se cierra la actualizacion de la partida
               // los dibujos quedan afuera para mostrar Game Over y Victoria
@@ -987,12 +1128,31 @@ int main(int argc, char* argv[])
             if ((GameOver || Victoria) && !PartidaGuardada)
             {
                 PartidaGuardada = true;
-                DatosPartida.puntaje = Puntaje;
-                DatosPartida.numero_oleada = Oleada;
-                DatosPartida.posicion = 1;
-
-                JugadorPtr Jugadores[1] = {&DatosPartida};
-                Archivos.guardarPartidaCompleta(ArchivoHistorial, Jugadores, 1, Semilla, "Clasico", &HistorialJugadores);
+                // revisa los puntos y las otras cosas para las posiciones
+                if (Ronda.tamano() > 0) GuardarJugador();
+                for (int i = 0; i < Registrados; i++)
+                {
+                    int Posicion = 1;
+                    for (int j = 0; j < Registrados; j++)
+                    {
+                        if (i == j) continue;
+                        const Jugador& Uno = DatosJugadores[i];
+                        const Jugador& Otro = DatosJugadores[j];
+                        int TotalUno = Uno.correctos + Uno.erroneos;
+                        int TotalOtro = Otro.correctos + Otro.erroneos;
+                        double PrecisionUno = TotalUno ? double(Uno.correctos) / TotalUno : 0;
+                        double PrecisionOtro = TotalOtro ? double(Otro.correctos) / TotalOtro : 0;
+                        if (Otro.puntaje > Uno.puntaje ||
+                            (Otro.puntaje == Uno.puntaje && Otro.numero_oleada > Uno.numero_oleada) ||
+                            (Otro.puntaje == Uno.puntaje && Otro.numero_oleada == Uno.numero_oleada && PrecisionOtro > PrecisionUno) ||
+                            (Otro.puntaje == Uno.puntaje && Otro.numero_oleada == Uno.numero_oleada && PrecisionOtro == PrecisionUno && j < i))
+                            Posicion++;
+                    }
+                    DatosJugadores[i].posicion = Posicion;
+                }
+                JugadorPtr Jugadores[6];
+                for (int i = 0; i < Registrados; i++) Jugadores[i] = &DatosJugadores[i];
+                Archivos.guardarPartidaCompleta(ArchivoHistorial, Jugadores, Registrados, Semilla, "Turnos", &HistorialJugadores);
                 TablaRanking.ConstruirDesdeHistorial(&HistorialJugadores);
             }
 
@@ -1096,6 +1256,8 @@ int main(int argc, char* argv[])
 
             // se muestra el puntaje en la esquina superior izquierda
             // cada enemigo eliminado vale 100 puntos
+            std::string NombreEnTurno = std::string("Turno: ") + DatosPartida.Alias;
+            al_draw_text(Fuente, Colores[0], 400, 20, ALLEGRO_ALIGN_CENTRE, NombreEnTurno.c_str());
             std::string TextoPuntaje = "Puntos: " + std::to_string(Puntaje);
 
             al_draw_text( Fuente, Crema, 20, 20, 0, TextoPuntaje.c_str() );
