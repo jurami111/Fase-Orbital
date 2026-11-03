@@ -1,8 +1,8 @@
 #pragma once
 
 typedef struct Jugador {
-    char Alias[25];
-    bool isBot;
+    char Alias[25]; //guarda el nombre del jugador 
+    bool isBot; // si es un bot (true) o una persona(false)
     int puntaje, combo, carga_pulso, vida_nucleo, numero_oleada;
     int posicion, disparos, correctos, erroneos, combo_max, pulsos;
     int dano_total, ticks;
@@ -25,11 +25,12 @@ struct NodoJugador;
 using NodoJugadorPtr = NodoJugador*;
 
 struct NodoJugador {
-    JugadorPtr dato;
-    NodoJugadorPtr siguiente;
-    NodoJugadorPtr anterior;
-};
+    JugadorPtr dato; //apunta a la informacion del jugador
+    NodoJugadorPtr siguiente;  //apunta al siguiente nodo(jugador)
+    NodoJugadorPtr anterior;  // apunta al anterior(jugador)
+}; 
 
+// controlar la lista de jugadores y los turnos
 class RondaJugadores {
     private:
         NodoJugadorPtr primero;
@@ -47,11 +48,10 @@ class RondaJugadores {
 
         NodoJugadorPtr AgregarJugador(JugadorPtr& jugador); //Le pasamos un puntero a jugador y lo insertamos al final de la lista
         NodoJugadorPtr EliminarJugador(NodoJugadorPtr indice); //Eliminamos un nodo
-        JugadorPtr EliminarActual(bool horario);
+        JugadorPtr EliminarActual(bool horario); // elimina jugador actual
         NodoJugadorPtr AvanzarJugador(); //Avanzamos al siguiente jugador en la ronda
-        NodoJugadorPtr AvanzarJugador(bool horario);
-        NodoJugadorPtr VerActual();
+        NodoJugadorPtr AvanzarJugador(bool horario); //avanza en la direccion de los turnos
+        NodoJugadorPtr VerActual(); // devuelve el nodo del jugador que le toca el turno
         int tamano(); //Cantidad de jugadores en la ronda
-
 
 };
