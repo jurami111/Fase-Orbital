@@ -354,18 +354,28 @@ void VistaAllegro::DibujarEstadisticas() {
 	texto(fuente, 40, 218, "Media: " + decimal(resumen.media) + "    Mediana: " + decimal(resumen.mediana));
 	texto(fuente, 40, 248, "Desviacion: " + decimal(resumen.desviacion_estandar) +
 		  "    Precision: " + decimal(resumen.precision_promedio) + "%");
-	texto(fuente, 40, 298, "Puntajes");
+	texto(fuente, 40, 276, "Precision C/M/A: " +
+		  decimal(estadisticas.calcularPrecisionColorHistorica(historial, resumen.alias, 0)) + "% / " +
+		  decimal(estadisticas.calcularPrecisionColorHistorica(historial, resumen.alias, 1)) + "% / " +
+		  decimal(estadisticas.calcularPrecisionColorHistorica(historial, resumen.alias, 2)) + "%");
+	texto(fuente, 40, 304, "Bajas C/M/A: " + std::to_string(resumen.bajas_color[0]) + " / " +
+		  std::to_string(resumen.bajas_color[1]) + " / " + std::to_string(resumen.bajas_color[2]));
+	texto(fuente, 40, 332, "Dano D/G/Dv/M/T/C: " + std::to_string(resumen.dano_por_tipo[0]) + " / " +
+		  std::to_string(resumen.dano_por_tipo[1]) + " / " + std::to_string(resumen.dano_por_tipo[2]) + " / " +
+		  std::to_string(resumen.dano_por_tipo[3]) + " / " + std::to_string(resumen.dano_por_tipo[4]) + " / " +
+		  std::to_string(resumen.dano_por_tipo[5]));
+	texto(fuente, 40, 360, "Puntajes");
 	int mayor = 1;
 	for (int frecuencia : histograma.frecuencias) if (frecuencia > mayor) mayor = frecuencia;
-	al_draw_line(40, 480, 760, 480, borde(), 1);
+	al_draw_line(40, 500, 760, 500, borde(), 1);
 	for (int indice = 0; indice < 10; indice++) {
 		const float x = 48 + indice * 71;
-		const float alto = 135.0f * histograma.frecuencias[indice] / mayor;
+		const float alto = 95.0f * histograma.frecuencias[indice] / mayor;
 		const ALLEGRO_COLOR coloresBarras[] = {cian(), magenta(), ambar()};
-		al_draw_filled_rectangle(x, 480 - alto, x + 48, 480, coloresBarras[indice % 3]);
-		texto(fuente, x, 462 - alto, std::to_string(histograma.frecuencias[indice]), 1.0f);
+		al_draw_filled_rectangle(x, 500 - alto, x + 48, 500, coloresBarras[indice % 3]);
+		texto(fuente, x, 482 - alto, std::to_string(histograma.frecuencias[indice]), 1.0f);
 	}
-	texto(fuente, 40, 500, std::to_string(histograma.minimo) + " - " + std::to_string(histograma.maximo));
+	texto(fuente, 40, 510, std::to_string(histograma.minimo) + " - " + std::to_string(histograma.maximo));
 }
 
 void VistaAllegro::DibujarRanking() {

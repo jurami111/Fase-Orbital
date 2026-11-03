@@ -5,9 +5,6 @@
 #include <allegro5/allegro_image.h>
 
 #include <cmath>       // para calcular las posiciones con seno y coseno
-#include <cstdlib>     // para utilizar numeros aleatorios
-#include <cstring>     // Para copiar el alias del jugador
-#include <ctime>       // Para cambiar los numeros aleatorios en cada partida
 #include <iostream>    // Para mostrar mensajes en la consola
 #include <string>      // para trabajar con textos
 
@@ -18,65 +15,29 @@
 #include "Motor/Oleada.h"
 #include "Estructuras/ColaSpawn.h"
 #include "Estructuras/RondaJugadores.h"
+#include "Estadisticas/BitacoraEventos.h"
+#include "Motor/Motor.h"
+#include "Vista/Controlador.h"
 
-// Agrega un enemigo a la lista usando los datos de la cola
-void CrearEnemigo(ListaEnemigos& Enemigos, DatosSpawn Datos, int& SiguienteId, int OleadaActual)
+namespace {
+Accion TraducirTecla(int tecla)
 {
-    const double Pi = 3.14159265;
-
-    Enemigo NuevoEnemigo{};
-
-    NuevoEnemigo.id = SiguienteId;
-    SiguienteId++;
-
-    NuevoEnemigo.tipo = Datos.tipo;
-    NuevoEnemigo.r = 300;
-    NuevoEnemigo.theta = Datos.angulo * Pi / 180.0;
-    NuevoEnemigo.color = Datos.color;
-    NuevoEnemigo.ticksColor = 0;
-
-    // el girador puede moverse en dos sentidos
-    if (Datos.tipo == TipoEnemigo::Girador)
+    switch (tecla)
     {
-        NuevoEnemigo.omega = (Datos.sentido ? 1 : -1) * (0.9 + 0.05 * OleadaActual) * 3.14159265 / 180.0;
+        case ALLEGRO_KEY_ENTER: return Accion::ConfirmarTurno;
+        case ALLEGRO_KEY_P: return Accion::Pausa;
+        case ALLEGRO_KEY_LEFT: return Accion::Izquierda;
+        case ALLEGRO_KEY_RIGHT: return Accion::Derecha;
+        case ALLEGRO_KEY_1:
+        case ALLEGRO_KEY_J: return Accion::Cian;
+        case ALLEGRO_KEY_2:
+        case ALLEGRO_KEY_K: return Accion::Magenta;
+        case ALLEGRO_KEY_3:
+        case ALLEGRO_KEY_L: return Accion::Ambar;
+        case ALLEGRO_KEY_SPACE: return Accion::Pulso;
+        default: return Accion::Ninguna;
     }
-    else
-    {
-        NuevoEnemigo.omega = 0;
-    }
-
-    // los tanques tienen mas resistencia
-    if (Datos.tipo == TipoEnemigo::Tanque)
-    {
-        NuevoEnemigo.vida = 3;
-        NuevoEnemigo.radio = 13;
-    }
-    else if (Datos.tipo == TipoEnemigo::Mini)
-    {
-        NuevoEnemigo.vida = 1;
-        NuevoEnemigo.radio = 7;
-    }
-    else
-    {
-        NuevoEnemigo.vida = 1;
-        NuevoEnemigo.radio = 11;
-        if (Datos.tipo == TipoEnemigo::Divisor) NuevoEnemigo.radio = 10;
-        if (Datos.tipo == TipoEnemigo::Dron) NuevoEnemigo.radio = 12;
-        if (Datos.tipo == TipoEnemigo::Camaleon) NuevoEnemigo.radio = 11;
-    }
-
-    EnemigoPtr Nuevo = &NuevoEnemigo;
-    Enemigos.InsertarFinal(Nuevo);
 }
-
-// deja listas las estadisticas y la semilla para una nueva partida
-void ReiniciarPartida(Jugador& Datos, int& Semilla, bool& Guardada)
-{
-    Datos = Jugador{};
-    std::strcpy(Datos.Alias, "Jugador");
-    Semilla = (int)time(NULL);
-    srand((unsigned int)Semilla);
-    Guardada = false;
 }
 
 int main(int argc, char* argv[])
@@ -115,6 +76,7 @@ int main(int argc, char* argv[])
 
     VistaAllegro Reportes; // para mostrar el ranking y las estadisticas
     int PasoCaptura = 0; // controla las capturas de pantalla
+    bool CapturaDuplicadoRechazado = false;
 
     // Se inicia Allegro y las herramientas que necesita el juego
     al_init();
@@ -178,188 +140,25 @@ int main(int argc, char* argv[])
     bool EnMenu = true;
     bool EnNombre = false;
     std::string NombreJugador;
-    bool EnTurno = false; // para mostrar el siguiente turno
-    int CantidadJugadores = 1;
-    int Registrados = 0;
-    int IndiceActual = 0;
-    Jugador DatosJugadores[6];
-    RondaJugadores Ronda;
-    ColaSpawn ColaOriginal; // guarda la oleada para los demas jugadores
-    int JugadoresTurno = 0;
-    int TurnosJugados = 0;
-    bool Horario = true;
-    bool EnPausa = false;
-    bool Izquierda = false;
-    bool Derecha = false;
-
-    // Posicion de la nave
-    float Angulo = 0; // Indica en que parte de la orbita esta
-    float Radio = 150; // Distancia de la nave al nucleo
-
-    // listas que guardan las balas y los enemigos
-    ListaBalas Balas;
-    ListaEnemigos Enemigos;
-
-    // esto es para los enemigos de cada oleada
-    Oleada GeneradorOleadas;
-    ColaSpawn EnemigosPendientes;
-    int TickOleada = 0;
-
-    int TiempoDisparo = 0; // cuenta el tiempo entre disparos
-    int CargaPulso = 0; // carga de 0 a 100
-    bool PulsoActivo = false;
-    float RadioPulso = 20; // radio de la onda
-    int Puntaje = 0; // puntos de la partida
-    int ColorSeleccionado = 0; // Se empieza utilizando cian
-    int EnemigosEliminados = 0; // Para calcular el puntaje
-    int Combo = 0; // aumenta al eliminar enemigos
-    Jugador DatosPartida; // estadisticas de la partida actual
-    int Semilla = 0; // Semilla de la partida actual
-    bool PartidaGuardada = false; // Evita guardar la misma partida dos veces
-
-    // variables nuevas para controlar las oleadas
-    int Oleada = 1; // la partida empieza en la oleada uno
-    int SiguienteId = 1; // Numero que se asigna al proximo enemigo
-    int EsperaOleada = 0; // Tiempo antes de comenzar otra oleada
-    bool OleadaTerminada = false; // Indica si ya eliminamos todos
-    bool GameOver = false; // indica si perdimos la partida
-    bool Victoria = false; // indica si se gana la partida
-    int VidaNucleo = 100; // Empieza con 100
-    const int TotalOleadas = 5; // Hay que superar cinco oleadas
-
-    // se cambia la semilla para que los colores no sean siempre iguales
-    ReiniciarPartida(DatosPartida, Semilla, PartidaGuardada);
-    
-
-    // Prepara los enemigos de la primera oleada
-    EnemigosPendientes = GeneradorOleadas.Generar(Semilla, Oleada);
-    TickOleada = 0;
-
-    // guarda lo que lleva cada jugador
-    auto GuardarJugador = [&]()
-    {
-        DatosPartida.puntaje = Puntaje;
-        DatosPartida.combo = Combo;
-        DatosPartida.carga_pulso = CargaPulso;
-        DatosPartida.vida_nucleo = VidaNucleo;
-        DatosPartida.numero_oleada = Oleada;
-        DatosJugadores[IndiceActual] = DatosPartida;
-    };
-
-    // prepara el turno del que sigue
-    auto PrepararTurno = [&]()
-    {
-        NodoJugadorPtr Nodo = Ronda.VerActual();
-        if (Nodo == nullptr) return;
-        IndiceActual = int(Nodo->dato - DatosJugadores);
-        DatosPartida = DatosJugadores[IndiceActual];
-        Puntaje = DatosPartida.puntaje;
-        Combo = 0;
-        CargaPulso = DatosPartida.carga_pulso;
-        VidaNucleo = DatosPartida.vida_nucleo;
-        Angulo = 0;
-        ColorSeleccionado = 0;
-        TiempoDisparo = 0;
-        PulsoActivo = false;
-        RadioPulso = 20;
-        TickOleada = 0;
-        SiguienteId = 1;
-        OleadaTerminada = false;
-        EsperaOleada = 0;
-        Izquierda = false;
-        Derecha = false;
-        EnPausa = false;
-        // limpia las listas antes del siguiente turno
-        NodoBalaPtr BalaVieja = Balas.primero();
-        while (BalaVieja != nullptr)
-        {
-            BalaVieja = Balas.Eliminar(BalaVieja);
-        }
-        NodoEnemigoPtr EnemigoViejo = Enemigos.primero();
-        while (EnemigoViejo != nullptr)
-        {
-            EnemigoViejo = Enemigos.Eliminar(EnemigoViejo);
-        }
-        EnemigosPendientes = ColaOriginal; // copia la cola para este jugador
-        EnTurno = true;
-    };
+    std::string AvisoRegistro;
+    Motor Juego;
+    bool GuardadoIntentado = false;
 
     // empieza cuando ya se anotaron todos
     auto IniciarMultijugador = [&]()
     {
         EnNombre = false;
         EnMenu = false;
-        Oleada = 1;
-        Horario = true;
-        TurnosJugados = 0;
-        JugadoresTurno = Ronda.tamano();
-        ColaOriginal = GeneradorOleadas.Generar(Semilla, Oleada);
-        PrepararTurno();
-    };
-
-    auto RegistrarNombre = [&]()
-    {
-        if (NombreJugador.empty()) return;
-        Jugador& Nuevo = DatosJugadores[Registrados];
-        Nuevo = Jugador{};
-        std::strncpy(Nuevo.Alias, NombreJugador.c_str(), sizeof(Nuevo.Alias) - 1);
-        Nuevo.Alias[sizeof(Nuevo.Alias) - 1] = '\0';
-        Nuevo.vida_nucleo = 100;
-        JugadorPtr Puntero = &Nuevo;
-        Ronda.AgregarJugador(Puntero);
-        Registrados++;
-        NombreJugador.clear();
-        if (Registrados == CantidadJugadores) IniciarMultijugador();
-    };
-
-    // pasa al otro jugador o a otra oleada
-    auto TerminarTurno = [&](bool Eliminado)
-    {
-        GuardarJugador();
-        if (Eliminado)
-        {
-            DatosJugadores[IndiceActual].posicion = Ronda.tamano();
-            Ronda.EliminarActual(Horario);
-        }
-        else Ronda.AvanzarJugador(Horario);
-
-        TurnosJugados++;
-        if (TurnosJugados >= JugadoresTurno)
-        {
-            if (Ronda.tamano() <= 1 || Oleada >= TotalOleadas)
-            {
-                GameOver = Ronda.tamano() == 0;
-                Victoria = !GameOver;
-                EnTurno = false;
-                return;
-            }
-            Oleada++;
-            Horario = !Horario;
-            JugadoresTurno = Ronda.tamano();
-            TurnosJugados = 0;
-            ColaOriginal = GeneradorOleadas.Generar(Semilla, Oleada);
-            // la siguiente ronda empieza con el ultimo que jugo
-            if (!Eliminado) Ronda.AvanzarJugador(Horario);
-        }
-        if (Ronda.tamano() == 0)
-        {
-            GameOver = true;
-            EnTurno = false;
-            return;
-        }
-        PrepararTurno();
+        Juego.IniciarMultijugador();
     };
 
     auto ReiniciarRegistro = [&]()
     {
-        while (Ronda.VerActual() != nullptr) Ronda.EliminarActual(true);
-        Registrados = 0;
-        CantidadJugadores = 1;
-        IndiceActual = 0;
+        Juego.ReiniciarRegistro();
         NombreJugador.clear();
+        AvisoRegistro.clear();
         EnNombre = true;
-        EnTurno = false;
-        PartidaGuardada = false;
+        GuardadoIntentado = false;
     };
 
     // Se inicia el temporizador para actualizar el juego
@@ -375,18 +174,50 @@ int main(int argc, char* argv[])
 
         // Esta parte se utiliza para las capturas automaticas
         // la se deja para que sigan funcionando las pruebas
-        if (!CarpetaCapturas.empty() && Evento.type == ALLEGRO_EVENT_TIMER && PasoCaptura >= 1 && PasoCaptura <= 3)
+        if (!CarpetaCapturas.empty() && Evento.type == ALLEGRO_EVENT_TIMER &&
+            PasoCaptura >= 1 && PasoCaptura <= 16)
         {
             Evento = ALLEGRO_EVENT{};
-            Evento.type = ALLEGRO_EVENT_MOUSE_BUTTON_DOWN;
-            Evento.mouse.button = 1;
-            Evento.mouse.x = 400;
-
-            // se elige la posicion del boton que se va a presionar
-            Evento.mouse.y = PasoCaptura == 1 ? 250 :
-                             (PasoCaptura == 2 ? 310 : 190);
-
-            PasoCaptura++; // Se pasa a la siguiente captura
+            if (PasoCaptura <= 3)
+            {
+                Evento.type = ALLEGRO_EVENT_MOUSE_BUTTON_DOWN;
+                Evento.mouse.button = 1;
+                Evento.mouse.x = 400;
+                Evento.mouse.y = PasoCaptura == 1 ? 250 : (PasoCaptura == 2 ? 310 : 190);
+            }
+            else if (PasoCaptura <= 6)
+            {
+                const int letras[] = {'A', 'n', 'a'};
+                Evento.type = ALLEGRO_EVENT_KEY_CHAR;
+                Evento.keyboard.unichar = letras[PasoCaptura - 4];
+                Evento.keyboard.keycode = PasoCaptura == 5 ? ALLEGRO_KEY_N : ALLEGRO_KEY_A;
+            }
+            else if (PasoCaptura == 7 || PasoCaptura == 11 || PasoCaptura == 15)
+            {
+                Evento.type = ALLEGRO_EVENT_MOUSE_BUTTON_DOWN;
+                Evento.mouse.button = 1;
+                Evento.mouse.x = 400;
+                Evento.mouse.y = PasoCaptura == 7 || PasoCaptura == 11 ? 420 : 490;
+            }
+            else if (PasoCaptura <= 10)
+            {
+                const int letras[] = {'a', 'N', 'A'};
+                Evento.type = ALLEGRO_EVENT_KEY_CHAR;
+                Evento.keyboard.unichar = letras[PasoCaptura - 8];
+                Evento.keyboard.keycode = PasoCaptura == 9 ? ALLEGRO_KEY_N : ALLEGRO_KEY_A;
+            }
+            else if (PasoCaptura <= 14)
+            {
+                Evento.type = ALLEGRO_EVENT_KEY_CHAR;
+                Evento.keyboard.unichar = '\b';
+                Evento.keyboard.keycode = ALLEGRO_KEY_BACKSPACE;
+            }
+            else
+            {
+                Evento.type = ALLEGRO_EVENT_KEY_DOWN;
+                Evento.keyboard.keycode = ALLEGRO_KEY_ENTER;
+            }
+            PasoCaptura++;
         }
 
         // Se revisa si se hizo clic con el mouse
@@ -396,86 +227,51 @@ int main(int argc, char* argv[])
             const float y = Evento.mouse.y; // Posicion vertical
 
             
-            // botones del registro
-            if (EnNombre && Registrados == 0 && x >= 270 && x <= 530 && y >= 200 && y <= 250)
+            // Registro dinamico: se pueden agregar nombres y comenzar con los registrados.
+            if (EnNombre && x >= 280 && x <= 520 && y >= 400 && y <= 445)
             {
-                CantidadJugadores++;
-                if (CantidadJugadores > 6) CantidadJugadores = 1;
-            }
-            else if (EnNombre && x >= 280 && x <= 520 && y >= 400 && y <= 445)
-            {
-                if (!NombreJugador.empty()) RegistrarNombre();
+                Juego.RegistrarNombre(NombreJugador, AvisoRegistro);
             }
             else if (EnNombre && x >= 280 && x <= 520 && y >= 470 && y <= 515)
+            {
+                if (!NombreJugador.empty() && !Juego.RegistrarNombre(NombreJugador, AvisoRegistro)) continue;
+                if (Juego.Registrados > 0) IniciarMultijugador();
+                else AvisoRegistro = "Agregue por lo menos un jugador.";
+            }
+            else if (EnNombre && x >= 280 && x <= 520 && y >= 530 && y <= 570)
             {
                 EnNombre = false;
                 EnMenu = true;
             }
             else
             // se revisa si estamos en victoria o derrota (no en el menu)
-            if ((GameOver || Victoria) && !EnMenu)
+            if ((Juego.GameOver || Juego.Victoria) && !EnMenu)
             {
                 // Boton para volver a jugar
                 if (x >= 280 && x <= 520 && y >= 320 && y <= 365)
                 {
-                    // Se quitan las balas que quedaron de la partida
-                    while (Balas.primero() != nullptr)
-                    {
-                        NodoBalaPtr BalaActual = Balas.primero();
-                        Balas.Eliminar(BalaActual); // eliminamos la bala
-                    }
+                    Juego.ReiniciarDesdeVictoria();
+                    EnMenu = false;
+                    ReiniciarRegistro(); // Se registran los jugadores
 
-                    // Se quitan los enemigos que quedaron de la partida anterior
-                    while (Enemigos.primero() != nullptr)
-                    {
-                        NodoEnemigoPtr EnemigoActual = Enemigos.primero(); // Se toma el primero
-                        Enemigos.Eliminar(EnemigoActual); // Lo se quitan de la lista
-                    }
-
-                    // se reinicia los datos de la partida
-                    Oleada = 1; // Se vuelve a la primera oleada
-                    SiguienteId = 1; // Se reinicia los numeros de enemigos
-                    EsperaOleada = 0; // Ya no hay tiempo de espera
-                    OleadaTerminada = false; // la nueva oleada no ha terminado
-
-                    EnemigosEliminados = 0; // Se vuelve a cero puntos
-                    ReiniciarPartida(DatosPartida, Semilla, PartidaGuardada);
-                    VidaNucleo = 100; // La nueva partida empieza con vida completa
-                    Combo = 0; // se reinicia el combo
-                    TiempoDisparo = 0; // se reinicia los disparos
-                    CargaPulso = 0; PulsoActivo = false; RadioPulso = 20; Puntaje = 0; // Reinicia el pulso
-                    ColorSeleccionado = 0; // Se empieza con cian
-                    Angulo = 0; // La nave vuelve a su posicion inicial
-
-                    Izquierda = false; // se deja de mover la nave
-                    Derecha = false;
-                    EnPausa = false;
-
-                    GameOver = false; // se quitan la derrota
-                    Victoria = false; // se quitan la victoria
-                    EnMenu = false; ReiniciarRegistro(); // Se registran los jugadores
-
-                    // Se preparan la primera oleada de la nueva partida
-                    EnemigosPendientes = GeneradorOleadas.Generar(Semilla, Oleada);
-                    TickOleada = 0;
                 }
 
                 // Boton para regresar al menu principal
                 else if (x >= 280 && x <= 520 && y >= 385 && y <= 430)
                 {
                     EnMenu = true; // Regresamos al menu
-                    EnPausa = false; // Se quitan la pausa
+                    Juego.EnPausa = false; // Se quitan la pausa
 
-                    Izquierda = false;
-                    Derecha = false;
+                    Juego.Izquierda = false;
+                    Juego.Derecha = false;
                 }
             }
 
 
             // Si estamos en pausa, se revisa el boton Seguir
-            else if (!EnMenu && EnPausa && x >= 335 && x <= 465 && y >= 270 && y <= 313)
+            else if (!EnMenu && Juego.EnPausa && x >= 335 && x <= 465 && y >= 270 && y <= 313)
             {
-                EnPausa = false; // Se quitan la pausa
+                Juego.EnPausa = false; // Se quitan la pausa
             }
 
             // si estamos en el menu, se revisa los botones
@@ -483,39 +279,10 @@ int main(int argc, char* argv[])
             {
                 if (y >= 180 && y <= 220)
                 {
-                    // limpiamos las balas de la partida anterior
-                    while (Balas.primero() != nullptr)
-                    {
-                        NodoBalaPtr BalaActual = Balas.primero(); // Se guardan la primera bala
-                        Balas.Eliminar(BalaActual); // La se quitan de la lista
-                    }// se quitan las balas viejas
+                    Juego.ReiniciarDesdeMenu();
 
-                    while (Enemigos.primero() != nullptr)
-                        Enemigos.Eliminar(Enemigos.primero()); // Se quitan los enemigos viejos
-
-                    Oleada = 1; // se vuelve a la primera oleada
-                    SiguienteId = 1; // se reinicia los numeros de enemigos
-                    EsperaOleada = 0; // Ya no estamos esperando otra oleada
-                    OleadaTerminada = false;
-                    GameOver = false; // Se quitan la pantalla de derrota
-                    Victoria = false; // se quitan la pantalla de victoria
-                    EnPausa = false;
-                    Angulo = 0; // La nave vuelve a su posicion inicial
-                    ColorSeleccionado = 0; // Se vuelve al cian
-                    TiempoDisparo = 0;
-                    CargaPulso = 0; PulsoActivo = false; RadioPulso = 20; Puntaje = 0; // reinicia el pulso
-                    EnemigosEliminados = 0; // se reinicia los puntos
-                    ReiniciarPartida(DatosPartida, Semilla, PartidaGuardada);
-                    VidaNucleo = 100; // La nueva partida empieza con vida completa
-                    Combo = 0; // Se reinicia el combo
-                    Izquierda = false;
-                    Derecha = false;
-
-                    // Se preparan la primera oleada de la nueva partida
-                    EnemigosPendientes = GeneradorOleadas.Generar(Semilla, Oleada);
-                    TickOleada = 0;
-
-                    EnMenu = false; ReiniciarRegistro(); // Se registran los jugadores
+                    EnMenu = false;
+                    ReiniciarRegistro(); // Se registran los jugadores
                 }
 
                 // botones de ranking y estadisticas
@@ -545,8 +312,12 @@ int main(int argc, char* argv[])
             }
 
             // se evita que la nave siga girando al usar el mouse
-            Izquierda = false;
-            Derecha = false;
+            Juego.Izquierda = false;
+            Juego.Derecha = false;
+            if (!CarpetaCapturas.empty() && PasoCaptura == 12 && EnNombre &&
+                Juego.Registrados == 1 && NombreJugador == "aNA") {
+                CapturaDuplicadoRechazado = true;
+            }
         }
 
         // se cierra el juego si se presiona la X de la ventana
@@ -573,53 +344,17 @@ int main(int argc, char* argv[])
                 else
                 {
                     EnMenu = true; // Regresamos al menu
-                    EnPausa = false; // Se quitan la pausa
+                    Juego.EnPausa = false; // Se quitan la pausa
                 }
 
-                Izquierda = false;
-                Derecha = false;
+                Juego.Izquierda = false;
+                Juego.Derecha = false;
             }
 
             // al terminar se puede regresar al menu con ESC
             // El reinicio se hace cuando se vuelve a presionar Jugar
 
-            if (EnTurno && Evento.keyboard.keycode == ALLEGRO_KEY_ENTER) EnTurno = false;
-
-            // La tecla P pone y quita la pausa
-            if (!EnMenu && !EnNombre && !EnTurno && !GameOver && !Victoria && Evento.keyboard.keycode == ALLEGRO_KEY_P)
-            {
-                EnPausa = !EnPausa;
-            }
-
-            // la flecha izquierda mueve la nave en una direccion
-            if (!EnMenu && !EnNombre && !EnTurno && !EnPausa && Evento.keyboard.keycode == ALLEGRO_KEY_LEFT)
-            {
-                Izquierda = true;
-            }
-
-            // La flecha derecha la mueve en la otra direccion
-            if (!EnMenu && !EnNombre && !EnTurno && !EnPausa && Evento.keyboard.keycode == ALLEGRO_KEY_RIGHT)
-            {
-                Derecha = true;
-            }
-
-            // se selecciona el color cian con 1 o J
-            if (!EnMenu && !EnNombre && !EnTurno && !EnPausa && (Evento.keyboard.keycode == ALLEGRO_KEY_1 || Evento.keyboard.keycode == ALLEGRO_KEY_J))
-            {
-                ColorSeleccionado = 0;
-            }
-
-            // Se selecciona magenta con 2 o K
-            if (!EnMenu && !EnNombre && !EnTurno && !EnPausa && (Evento.keyboard.keycode == ALLEGRO_KEY_2 || Evento.keyboard.keycode == ALLEGRO_KEY_K))
-            {
-                ColorSeleccionado = 1;
-            }
-
-            // se selecciona ambar con 3 o L
-            if (!EnMenu && !EnNombre && !EnTurno && !EnPausa && (Evento.keyboard.keycode == ALLEGRO_KEY_3 || Evento.keyboard.keycode == ALLEGRO_KEY_L))
-            {
-                ColorSeleccionado = 2;
-            }
+            Controlador::Presionar(TraducirTecla(Evento.keyboard.keycode), Juego, EnMenu, EnNombre);
         }
 
         // se escribe el alias antes de iniciar la partida
@@ -630,36 +365,18 @@ int main(int argc, char* argv[])
             if (Tecla == ALLEGRO_KEY_BACKSPACE && !NombreJugador.empty()) NombreJugador.pop_back();
             else if (Tecla == ALLEGRO_KEY_ENTER && !NombreJugador.empty())
             {
-                RegistrarNombre();
+                Juego.RegistrarNombre(NombreJugador, AvisoRegistro);
             }
-            else if (Letra >= 32 && Letra <= 126 && NombreJugador.size() < sizeof(DatosPartida.Alias) - 1)
+            else if (Letra >= 32 && Letra <= 126 && NombreJugador.size() < sizeof(Juego.DatosPartida.Alias) - 1)
             {
                 // los nombres se guardan con caracteres simples para el historial CSV
                 if (Letra != ',' && Letra != '"') NombreJugador += (char)Letra;
             }
         }
 
-        // el pulso se activa solo cuando la carga esta completa
-        if (Evento.type == ALLEGRO_EVENT_KEY_DOWN && !EnMenu && !EnNombre && !EnTurno && !EnPausa && !GameOver && !Victoria && Evento.keyboard.keycode == ALLEGRO_KEY_SPACE && CargaPulso == 100 && !PulsoActivo)
-        {
-            PulsoActivo = true;
-            RadioPulso = 20;
-            CargaPulso = 0;
-            DatosPartida.pulsos++;
-        }
-
-        // se revisa cuando se sueltan las flechas
         if (Evento.type == ALLEGRO_EVENT_KEY_UP)
         {
-            if (Evento.keyboard.keycode == ALLEGRO_KEY_LEFT)
-            {
-                Izquierda = false; // se deja de girar a la izquierda
-            }
-
-            if (Evento.keyboard.keycode == ALLEGRO_KEY_RIGHT)
-            {
-                Derecha = false; // se deja de girar a la derecha
-            }
+            Controlador::Soltar(TraducirTecla(Evento.keyboard.keycode), Juego);
         }
 
         // El temporizador actualiza el juego varias veces por segundo
@@ -670,20 +387,13 @@ int main(int argc, char* argv[])
             {
                 al_clear_to_color(Fondo);
                 al_draw_text(Fuente, Colores[0], 400, 85, ALLEGRO_ALIGN_CENTRE, "REGISTRO MULTIJUGADOR");
-                std::string Titulo = "Jugador " + std::to_string(Registrados + 1) + " de " + std::to_string(CantidadJugadores);
+                std::string Titulo = "Agregados: " + std::to_string(Juego.Registrados) + " de 6";
                 al_draw_text(Fuente, Crema, 400, 140, ALLEGRO_ALIGN_CENTRE, Titulo.c_str());
 
-                // cantidad de personas
-                if (Registrados == 0)
+                for (int indice = 0; indice < Juego.Registrados; indice++)
                 {
-                    std::string Numero = "Jugadores: " + std::to_string(CantidadJugadores) + "  [+]";
-                    al_draw_filled_rectangle(270, 200, 530, 250, Morado);
-                    al_draw_rectangle(270, 200, 530, 250, Colores[2], 2);
-                    al_draw_text(Fuente, Colores[2], 400, 211, ALLEGRO_ALIGN_CENTRE, Numero.c_str());
-                }
-                else
-                {
-                    al_draw_text(Fuente, Colores[2], 400, 213, ALLEGRO_ALIGN_CENTRE, "Escriba el siguiente nombre");
+                    std::string nombre = std::to_string(indice + 1) + ". " + Juego.DatosJugadores[indice].Alias;
+                    al_draw_text(Fuente, Colores[indice % 3], 300, 170 + indice * 20, 0, nombre.c_str());
                 }
 
                 // nombre
@@ -693,19 +403,23 @@ int main(int argc, char* argv[])
                 al_draw_text(Fuente, Crema, 400, 315, ALLEGRO_ALIGN_CENTRE, TextoNombre.c_str());
 
                 al_draw_filled_rectangle(280, 400, 520, 445, Colores[0]);
-                al_draw_text(Fuente, Fondo, 400, 410, ALLEGRO_ALIGN_CENTRE, Registrados + 1 == CantidadJugadores ? "Comenzar" : "Siguiente");
-                al_draw_rectangle(280, 470, 520, 515, Colores[1], 2);
-                al_draw_text(Fuente, Crema, 400, 480, ALLEGRO_ALIGN_CENTRE, "Volver");
+                al_draw_text(Fuente, Fondo, 400, 410, ALLEGRO_ALIGN_CENTRE, "Agregar");
+                al_draw_filled_rectangle(280, 470, 520, 515, Colores[1]);
+                al_draw_text(Fuente, Fondo, 400, 480, ALLEGRO_ALIGN_CENTRE, "Jugar");
+                al_draw_rectangle(280, 530, 520, 570, Colores[2], 2);
+                al_draw_text(Fuente, Crema, 400, 540, ALLEGRO_ALIGN_CENTRE, "Volver");
+                if (!AvisoRegistro.empty())
+                    al_draw_text(Fuente, Coral, 400, 370, ALLEGRO_ALIGN_CENTRE, AvisoRegistro.c_str());
                 al_flip_display();
                 continue;
             }
 
-            if (EnTurno)
+            if (Juego.EnTurno)
             {
                 al_clear_to_color(Fondo);
                 al_draw_text(Fuente, Colores[0], 400, 170, ALLEGRO_ALIGN_CENTRE, "SIGUIENTE TURNO");
-                al_draw_text(Fuente, Crema, 400, 245, ALLEGRO_ALIGN_CENTRE, DatosPartida.Alias);
-                std::string Aviso = "Oleada " + std::to_string(Oleada) + " de " + std::to_string(TotalOleadas);
+                al_draw_text(Fuente, Crema, 400, 245, ALLEGRO_ALIGN_CENTRE, Juego.DatosPartida.Alias);
+                std::string Aviso = "Oleada " + std::to_string(Juego.Oleada) + " de " + std::to_string(Juego.TotalOleadas);
                 al_draw_text(Fuente, Crema, 400, 295, ALLEGRO_ALIGN_CENTRE, Aviso.c_str());
                 al_draw_text(Fuente, Colores[2], 400, 365, ALLEGRO_ALIGN_CENTRE, "Presione ENTER para jugar");
                 al_flip_display();
@@ -766,394 +480,25 @@ int main(int argc, char* argv[])
                 continue; // No actualizamos la partida mientras estamos aqui
             }
 
-            // solo actualizamos la partida cuando no esta en pausa
-            if (!EnPausa && !GameOver && !Victoria)
-            {
-                DatosPartida.ticks++;
-
-                // se mueve la nave por su orbita
-                if (Izquierda)
-                {
-                    Angulo -= 0.04f; // Giramos hacia un lado
-                }
-
-                if (Derecha)
-                {
-                    Angulo += 0.04f; // Giramos hacia el otro lado
-                }
-
-                // La oleada se revisa despues de las colisiones
-                // Asi tambien se puede comprobar si ya se gana
-
-                // cada jugador juega una oleada completa antes del siguiente turno
-                // Se revisa si ya debe aparecer otro enemigo
-                if (!OleadaTerminada)
-                {
-                    TickOleada++;
-
-                    const DatosSpawn* Siguiente = EnemigosPendientes.VerFrente();
-
-                    while (Siguiente != nullptr && Siguiente->tick <= TickOleada)
-                    {
-                        // Se guardan los datos antes de quitar el elemento de la cola
-                        DatosSpawn Datos = *Siguiente;
-
-                        CrearEnemigo(Enemigos, Datos, SiguienteId, Oleada);
-                        EnemigosPendientes.Desencolar();
-
-                        Siguiente = EnemigosPendientes.VerFrente();
-                    }
-                }
-
-                // La nave dispara solamente cuando hay enemigos en pantalla
-                if (!OleadaTerminada)
-                {
-                    TiempoDisparo++; // cuenta los ticks entre disparos
-
-                    if (TiempoDisparo >= 4)
-                    {
-                        TiempoDisparo = 0; // Reinicia el contador
-                        Bala NuevaBala{}; // Crea una bala nueva
-
-                        // La bala aparece un poco adelante de la nave
-                        NuevaBala.x =
-                            400 + cos(Angulo) * (Radio + 15);
-
-                        NuevaBala.y =
-                            310 + sin(Angulo) * (Radio + 15);
-
-                        // se indica hacia donde se va a mover
-                        NuevaBala.vx = cos(Angulo) * 9;
-                        NuevaBala.vy = sin(Angulo) * 9;
-
-                        NuevaBala.color = ColorSeleccionado; // color actual
-                        NuevaBala.duenio = 1; // pertenece al jugador
-                        DatosPartida.disparos++;
-
-                        // Se guardan la bala en la lista
-                        BalaPtr Nueva = &NuevaBala;
-                        Balas.InsertarInicio(Nueva);
-                    }
-                }
-
-                
-                // se recorre la lista para mover todos los enemigos
-                NodoEnemigoPtr EnemigoActual = Enemigos.primero();
-
-                while (EnemigoActual != nullptr)
-                {
-                    // se toma los datos del enemigo actual
-                    Enemigo* Actual = EnemigoActual->dato;
-
-                    // velocidad de cada tipo de enemigo
-                    float Velocidad = 0.5f + 0.05f * Oleada;   // esto luego cambiar a 8
-                    if (Actual->tipo == TipoEnemigo::Girador || Actual->tipo == TipoEnemigo::Camaleon) Velocidad *= 0.85f;
-                    if (Actual->tipo == TipoEnemigo::Divisor) Velocidad *= 0.80f;
-                    if (Actual->tipo == TipoEnemigo::Mini) Velocidad *= 1.25f;
-                    if (Actual->tipo == TipoEnemigo::Tanque) Velocidad *= 0.50f;
-                    Actual->r -= Velocidad;
-
-                    // Los minis y giradores avanzan en espiral
-                    if (Actual->tipo == TipoEnemigo::Mini || Actual->tipo == TipoEnemigo::Girador) Actual->theta += Actual->omega;
-
-                    // el camaleon cambia de color cada cierto tiempo
-                    if (Actual->tipo == TipoEnemigo::Camaleon)
-                    {
-                        Actual->ticksColor++;
-
-                        // cambia de color cada 42 ticks
-                        if (Actual->ticksColor >= 42)
-                        {
-                            Actual->color = (Actual->color + 1) % 3;
-                            Actual->ticksColor = 0;
-                        }
-                    }
-
-                    // Se calcula la posicion del enemigo
-                    float EnemigoX = 400 + cos(Actual->theta) * Actual->r;
-                    float EnemigoY = 310 + sin(Actual->theta) * Actual->r;
-
-                    // Se calcula la posicion de la nave
-                    float NaveX = 400 + cos(Angulo) * Radio;
-                    float NaveY = 310 + sin(Angulo) * Radio;
-
-                    // se calcula la distancia entre el enemigo y la nave
-                    float DiferenciaX = EnemigoX - NaveX;
-                    float DiferenciaY = EnemigoY - NaveY;
-
-                    float DistanciaCuadrada = DiferenciaX * DiferenciaX + DiferenciaY * DiferenciaY;
-
-                    float RadioChoque = Actual->radio + 5;
-
-                    // se revisa si el enemigo choco con la nave
-                    if (DistanciaCuadrada < RadioChoque * RadioChoque)
-                    {
-                        VidaNucleo -= 12; // El choque quita 12 puntos
-                        Combo = 0;
-
-                        // Se quitan al enemigo y continuamos con el siguiente
-                        EnemigoActual = Enemigos.Eliminar(EnemigoActual);
-
-                        if (VidaNucleo <= 0)
-                        {
-                            VidaNucleo = 0;
-                            GameOver = true;
-                            break;
-                        }
-
-                        continue;
-                    }
-
-                    // se revisa si el enemigo llego al nucleo
-                    if (Actual->r <= 20 + 0.4f * Actual->radio)
-                    {
-                        // Los tanques hacen mas daño
-                        if (Actual->tipo == TipoEnemigo::Tanque)
-                        {
-                            VidaNucleo -= 22;
-                        }
-                        else
-                        {
-                            VidaNucleo -= 10;
-                        }
-
-                        Combo = 0;
-
-                        // eliminamos al enemigo que llego al nucleo
-                        EnemigoActual = Enemigos.Eliminar(EnemigoActual);
-
-                        if (VidaNucleo <= 0)
-                        {
-                            VidaNucleo = 0;
-                            GameOver = true;
-                            break;
-                        }
-
-                        continue;
-                    }
-
-                    // Se pasa al siguiente enemigo una sola vez
-                    EnemigoActual = EnemigoActual->siguiente;
-                }
-
-                // Ahora se recorre las balas para moverlas
-                NodoBalaPtr BalaActual = Balas.primero();
-
-                while (BalaActual != nullptr)
-                {
-                    Bala* Actual = BalaActual->dato; // Bala que estamos revisando
-
-                    // Se suma la velocidad a su posicion
-                    Actual->x += Actual->vx;
-                    Actual->y += Actual->vy;
-
-                    // Se calcula que tan lejos esta del centro
-                    float DistanciaX = Actual->x - 400;
-                    float DistanciaY = Actual->y - 310;
-
-                    float DistanciaCuadrada = DistanciaX * DistanciaX + DistanciaY * DistanciaY;
-
-                    // eliminamos las balas que ya salieron de la zona de juego
-                    if (DistanciaCuadrada > 320 * 320)
-                    {
-                        BalaActual = Balas.Eliminar(BalaActual);
-                        continue; // se sigue con la siguiente bala
-                    }
-
-                    // Si la bala sigue dentro, se revisa si golpea un enemigo
-                    bool BalaImpacto = false;
-
-                    NodoEnemigoPtr EnemigoRevisado = Enemigos.primero();
-
-                    while (EnemigoRevisado != nullptr)
-                    {
-                        Enemigo* Objetivo = EnemigoRevisado->dato;
-
-                        // Se convierte la posicion circular del enemigo
-                        // A una posicion X y Y dentro de la pantalla
-                        float EnemigoX = 400 + cos(Objetivo->theta) * Objetivo->r;
-
-                        float EnemigoY = 310 + sin(Objetivo->theta) * Objetivo->r;
-
-                        // se calcula la diferencia entre la bala y el enemigo
-                        float DiferenciaX = Actual->x - EnemigoX;
-                        float DiferenciaY = Actual->y - EnemigoY;
-
-                        // Se suma los radios para saber cuando se tocan
-                        float RadioColision = Objetivo->radio + 5;
-
-                        // Se comprueba si la bala esta dentro del area del enemigo
-                        if (DiferenciaX * DiferenciaX + DiferenciaY * DiferenciaY <= RadioColision * RadioColision)
-                        {
-                            BalaImpacto = true; // La bala golpeo al enemigo
-
-                            // Se revisa si ambos tienen el mismo color
-                            if (Actual->color == Objetivo->color)
-                            {
-                                Objetivo->vida--; // Le se quitan una vida
-                                DatosPartida.correctos++;
-
-                                // si se quedo sin vida, eliminamos al enemigo
-                                if (Objetivo->vida <= 0)
-                                {
-                                    // Si eliminamos un divisor, aparecen dos minis
-                                    if (Objetivo->tipo == TipoEnemigo::Divisor)
-                                    {
-                                        NodoEnemigoPtr Posicion = EnemigoRevisado;
-                                        for (int i = 0; i < 2; i++)
-                                        {
-                                            Enemigo Mini{};
-
-                                            Mini.id = SiguienteId;
-                                            SiguienteId++;
-
-                                            Mini.tipo = TipoEnemigo::Mini;
-                                            Mini.r = Objetivo->r;
-                                            Mini.theta = Objetivo->theta + (i == 0 ? -0.0698132 : 0.0698132);
-                                            Mini.omega = i == 0 ? -0.0296706 : 0.0296706;
-                                            Mini.color = (Objetivo->color + i + 1) % 3;
-                                            Mini.vida = 1;
-                                            Mini.radio = 7;
-                                            Mini.ticksColor = 0;
-
-                                            EnemigoPtr Nuevo = &Mini;
-                                            Posicion = Enemigos.InsertarDespues(Posicion, Nuevo);
-                                        }
-                                    }
-
-                                    // puntos y carga segun el enemigo eliminado
-                                    int PuntosBaja = 100;
-                                    if (Objetivo->tipo == TipoEnemigo::Girador) PuntosBaja = 150;
-                                    if (Objetivo->tipo == TipoEnemigo::Divisor) PuntosBaja = 200;
-                                    if (Objetivo->tipo == TipoEnemigo::Mini) PuntosBaja = 75;
-                                    if (Objetivo->tipo == TipoEnemigo::Tanque) PuntosBaja = 400;
-                                    if (Objetivo->tipo == TipoEnemigo::Camaleon) PuntosBaja = 300;
-                                    int Multiplicador = 1 + Combo / 6;
-                                    if (Multiplicador > 8) Multiplicador = 8;
-                                    Puntaje += PuntosBaja * Multiplicador;
-                                    CargaPulso += Objetivo->tipo == TipoEnemigo::Tanque ? 14 : 5;
-                                    if (CargaPulso > 100) CargaPulso = 100;
-                                    EnemigosEliminados++; // aumenta las bajas
-                                    Combo++; // Aumenta el combo
-                                    if (Combo > DatosPartida.combo_max) DatosPartida.combo_max = Combo;
-
-                                    if (Objetivo->tipo == TipoEnemigo::Tanque) DatosPartida.bajas_tanque++;
-                                    else if (Objetivo->tipo == TipoEnemigo::Girador) DatosPartida.bajas_girador++;
-                                    else if (Objetivo->tipo == TipoEnemigo::Divisor) DatosPartida.bajas_divisor++;
-                                    else if (Objetivo->tipo == TipoEnemigo::Mini) DatosPartida.bajas_mini++;
-                                    else if (Objetivo->tipo == TipoEnemigo::Camaleon) DatosPartida.bajas_camaleon++;
-                                    else DatosPartida.bajas_dron++;
-
-                                    // Lo se quitan de la lista
-                                    EnemigoRevisado =
-                                        Enemigos.Eliminar(EnemigoRevisado);
-                                }
-                            }
-                            else
-                            {
-                                // si el color es incorrecto, lo alejamos un poco
-                                Objetivo->r += 9;
-
-                                Combo = 0; // Se pierde el combo
-                                DatosPartida.erroneos++;
-                            }
-
-                            break; // Una bala solo puede golpear a un enemigo
-                        }
-
-                        // si no hubo colision, se revisa el siguiente enemigo
-                        EnemigoRevisado = EnemigoRevisado->siguiente;
-                    }
-
-                    // se quitan la bala si ya golpeo a un enemigo
-                    if (BalaImpacto)
-                    {
-                        BalaActual = Balas.Eliminar(BalaActual);
-                    }
-                    else
-                    {
-                        // Si no golpeo nada, la se deja seguir avanzando
-                        BalaActual = BalaActual->siguiente;
-                    }
-                }
-
-                // La onda avanza y elimina los enemigos que toca
-                if (PulsoActivo)
-                {
-                    RadioPulso += 12;
-                    NodoEnemigoPtr EnemigoOnda = Enemigos.primero();
-                    while (EnemigoOnda != nullptr)
-                    {
-                        Enemigo* Actual = EnemigoOnda->dato;
-                        if (fabs(Actual->r - RadioPulso) < Actual->radio + 3)
-                        {
-                            int PuntosBaja = 100;
-                            if (Actual->tipo == TipoEnemigo::Girador) PuntosBaja = 150;
-                            if (Actual->tipo == TipoEnemigo::Divisor) PuntosBaja = 200;
-                            if (Actual->tipo == TipoEnemigo::Mini) PuntosBaja = 75;
-                            if (Actual->tipo == TipoEnemigo::Tanque) PuntosBaja = 400;
-                            if (Actual->tipo == TipoEnemigo::Camaleon) PuntosBaja = 300;
-                            int Multiplicador = 1 + Combo / 6;
-                            if (Multiplicador > 8) Multiplicador = 8;
-                            Puntaje += PuntosBaja * Multiplicador;
-                            EnemigosEliminados++;
-                            if (Actual->tipo == TipoEnemigo::Tanque) DatosPartida.bajas_tanque++;
-                            else if (Actual->tipo == TipoEnemigo::Girador) DatosPartida.bajas_girador++;
-                            else if (Actual->tipo == TipoEnemigo::Divisor) DatosPartida.bajas_divisor++;
-                            else if (Actual->tipo == TipoEnemigo::Mini) DatosPartida.bajas_mini++;
-                            else if (Actual->tipo == TipoEnemigo::Camaleon) DatosPartida.bajas_camaleon++;
-                            else DatosPartida.bajas_dron++;
-                            EnemigoOnda = Enemigos.Eliminar(EnemigoOnda);
-                        }
-                        else EnemigoOnda = EnemigoOnda->siguiente;
-                    }
-                    if (RadioPulso > 320) PulsoActivo = false;
-                }
-
-                if (GameOver)
-                {
-                    GameOver = false;
-                    TerminarTurno(true);
-                }
-                else if (!OleadaTerminada && Enemigos.vacia() && EnemigosPendientes.isVacia())
-                {
-                    VidaNucleo += 8;
-                    if (VidaNucleo > 100) VidaNucleo = 100;
-                    TerminarTurno(false);
-                }
-            } // Se cierra la actualizacion de la partida
+            Juego.AvanzarTick();
               // los dibujos quedan afuera para mostrar Game Over y Victoria
 
             // Se guardan la partida una sola vez al terminar
-            if ((GameOver || Victoria) && !PartidaGuardada)
+            if ((Juego.GameOver || Juego.Victoria) && !GuardadoIntentado)
             {
-                PartidaGuardada = true;
-                // revisa los puntos y las otras cosas para las posiciones
-                if (Ronda.tamano() > 0) GuardarJugador();
-                for (int i = 0; i < Registrados; i++)
-                {
-                    int Posicion = 1;
-                    for (int j = 0; j < Registrados; j++)
-                    {
-                        if (i == j) continue;
-                        const Jugador& Uno = DatosJugadores[i];
-                        const Jugador& Otro = DatosJugadores[j];
-                        int TotalUno = Uno.correctos + Uno.erroneos;
-                        int TotalOtro = Otro.correctos + Otro.erroneos;
-                        double PrecisionUno = TotalUno ? double(Uno.correctos) / TotalUno : 0;
-                        double PrecisionOtro = TotalOtro ? double(Otro.correctos) / TotalOtro : 0;
-                        if (Otro.puntaje > Uno.puntaje ||
-                            (Otro.puntaje == Uno.puntaje && Otro.numero_oleada > Uno.numero_oleada) ||
-                            (Otro.puntaje == Uno.puntaje && Otro.numero_oleada == Uno.numero_oleada && PrecisionOtro > PrecisionUno) ||
-                            (Otro.puntaje == Uno.puntaje && Otro.numero_oleada == Uno.numero_oleada && PrecisionOtro == PrecisionUno && j < i))
-                            Posicion++;
-                    }
-                    DatosJugadores[i].posicion = Posicion;
-                }
+                GuardadoIntentado = true;
+                Juego.CalcularPosiciones();
                 JugadorPtr Jugadores[6];
-                for (int i = 0; i < Registrados; i++) Jugadores[i] = &DatosJugadores[i];
-                Archivos.guardarPartidaCompleta(ArchivoHistorial, Jugadores, Registrados, Semilla, "Turnos", &HistorialJugadores);
-                TablaRanking.ConstruirDesdeHistorial(&HistorialJugadores);
+                for (int i = 0; i < Juego.Registrados; i++) Jugadores[i] = &Juego.DatosJugadores[i];
+                const bool guardado = Archivos.guardarPartidaCompleta(
+                    ArchivoHistorial, Jugadores, Juego.Registrados, Juego.Semilla, "Turnos", &HistorialJugadores);
+                if (guardado)
+                {
+                    TablaRanking.ConstruirDesdeHistorial(&HistorialJugadores);
+                    for (int indice = 0; indice < Juego.Registrados; indice++)
+                        Estadisticas().imprimirLineaTiempo(&Juego.Bitacora, &Juego.DatosJugadores[indice]);
+                }
+                else std::cerr << "No se pudo guardar la partida en el historial.\n";
             }
 
             // limpiamos la pantalla antes de volver a dibujar todo
@@ -1161,22 +506,22 @@ int main(int argc, char* argv[])
 
             // Se dibuja solamente la orbita por donde se mueve la nave
             // No agregamos las otras lineas ni circulos decorativos
-            al_draw_circle( 400, 310, Radio, Morado, 2 );
+            al_draw_circle( 400, 310, Juego.Radio, Morado, 2 );
 
             // se dibuja el nucleo en el centro de la pantalla
-            al_draw_filled_circle( 400, 310, 40, Morado );
+            al_draw_filled_circle( 400, 310, 20, Morado );
 
             // este circulo muestra el color seleccionado
-            al_draw_filled_circle( 400, 310, 29, Colores[ColorSeleccionado] );
+            al_draw_filled_circle( 400, 310, 15, Colores[Juego.ColorSeleccionado] );
 
             // Parte interna del nucleo
-            al_draw_filled_circle( 400, 310, 24, Crema );
+            al_draw_filled_circle( 400, 310, 10, Crema );
 
             // circulo del pulso mientras se expande
-            if (PulsoActivo) al_draw_circle(400, 310, RadioPulso, Colores[0], 4);
+            if (Juego.PulsoActivo) al_draw_circle(400, 310, Juego.RadioPulso, Colores[0], 4);
 
             // Se recorre los enemigos para dibujarlos
-            NodoEnemigoPtr EnemigoDibujo = Enemigos.primero();
+            NodoEnemigoPtr EnemigoDibujo = Juego.Enemigos.primero();
 
             while (EnemigoDibujo != nullptr)
             {
@@ -1185,38 +530,46 @@ int main(int argc, char* argv[])
 
                 // se calcula su posicion alrededor del nucleo
                 float x = 400 + cos(Actual->theta) * Actual->r;
-                float y = 310 + sin(Actual->theta) * Actual->r;
+                float y = 310 - sin(Actual->theta) * Actual->r;
 
                 // Cada enemigo tiene una forma sencilla
                 if (Actual->tipo == TipoEnemigo::Tanque)
                 {
-                    al_draw_filled_rectangle(x - 13, y - 13, x + 13, y + 13, Colores[Actual->color]);
-                    al_draw_filled_rectangle(x - 5, y - 5, x + 5, y + 5, Fondo);
+                    al_draw_filled_rectangle(x - Actual->radio, y - Actual->radio,
+                                             x + Actual->radio, y + Actual->radio, Colores[Actual->color]);
+                    al_draw_filled_rectangle(x - Actual->radio / 2, y - Actual->radio / 2,
+                                             x + Actual->radio / 2, y + Actual->radio / 2, Fondo);
                 }
                 else if (Actual->tipo == TipoEnemigo::Girador)
                 {
-                    al_draw_filled_triangle(x, y - 11, x - 11, y + 9, x + 11, y + 9, Colores[Actual->color]);
+                    al_draw_filled_triangle(x, y - Actual->radio, x - Actual->radio, y + Actual->radio,
+                                            x + Actual->radio, y + Actual->radio, Colores[Actual->color]);
                     al_draw_filled_circle(x, y, 2, Fondo);
                 }
                 else if (Actual->tipo == TipoEnemigo::Divisor)
                 {
-                    al_draw_filled_rectangle(x - 10, y - 10, x + 10, y + 10, Colores[Actual->color]);
-                    al_draw_line(x - 7, y - 7, x + 7, y + 7, Fondo, 2);
+                    al_draw_filled_rectangle(x - Actual->radio, y - Actual->radio,
+                                             x + Actual->radio, y + Actual->radio, Colores[Actual->color]);
+                    al_draw_line(x - Actual->radio + 1, y - Actual->radio + 1,
+                                 x + Actual->radio - 1, y + Actual->radio - 1, Fondo, 2);
                 }
                 else if (Actual->tipo == TipoEnemigo::Mini)
                 {
-                    al_draw_filled_triangle(x, y - 7, x - 7, y + 6, x + 7, y + 6, Colores[Actual->color]);
+                    al_draw_filled_triangle(x, y - Actual->radio, x - Actual->radio, y + Actual->radio,
+                                            x + Actual->radio, y + Actual->radio, Colores[Actual->color]);
                 }
                 else if (Actual->tipo == TipoEnemigo::Camaleon)
                 {
-                    al_draw_filled_ellipse(x, y, 11, 9, Colores[Actual->color]);
+                    al_draw_filled_ellipse(x, y, Actual->radio, Actual->radio, Colores[Actual->color]);
                     al_draw_filled_circle(x, y, 2, Fondo);
                 }
                 else
                 {
                     // el dron es un rombo relleno
-                    al_draw_filled_triangle(x, y - 12, x + 12, y, x - 12, y, Colores[Actual->color]);
-                    al_draw_filled_triangle(x, y + 12, x + 12, y, x - 12, y, Colores[Actual->color]);
+                    al_draw_filled_triangle(x, y - Actual->radio, x + Actual->radio, y,
+                                            x - Actual->radio, y, Colores[Actual->color]);
+                    al_draw_filled_triangle(x, y + Actual->radio, x + Actual->radio, y,
+                                            x - Actual->radio, y, Colores[Actual->color]);
                 }
 
                 // se pasa al siguiente enemigo
@@ -1224,7 +577,7 @@ int main(int argc, char* argv[])
             }
 
             // Se recorre la lista para dibujar las balas
-            NodoBalaPtr BalaDibujo = Balas.primero();
+            NodoBalaPtr BalaDibujo = Juego.Balas.primero();
 
             while (BalaDibujo != nullptr)
             {
@@ -1237,28 +590,28 @@ int main(int argc, char* argv[])
             }
 
             // Se calcula donde se encuentra la nave
-            float NaveX = 400 + cos(Angulo) * Radio;
-            float NaveY = 310 + sin(Angulo) * Radio;
+            float NaveX = 400 + cos(Juego.Angulo) * Juego.Radio;
+            float NaveY = 310 - sin(Juego.Angulo) * Juego.Radio;
 
             // se calcula la punta de la nave
-            float PuntaX = NaveX + cos(Angulo) * 18;
-            float PuntaY = NaveY + sin(Angulo) * 18;
+            float PuntaX = NaveX + cos(Juego.Angulo) * 18;
+            float PuntaY = NaveY - sin(Juego.Angulo) * 18;
 
             // se calcula los otros dos puntos del triangulo
-            float Lado1X = NaveX + cos(Angulo + 2.5f) * 13;
-            float Lado1Y = NaveY + sin(Angulo + 2.5f) * 13;
+            float Lado1X = NaveX + cos(Juego.Angulo + 2.5f) * 13;
+            float Lado1Y = NaveY - sin(Juego.Angulo + 2.5f) * 13;
 
-            float Lado2X = NaveX + cos(Angulo - 2.5f) * 13;
-            float Lado2Y = NaveY + sin(Angulo - 2.5f) * 13;
+            float Lado2X = NaveX + cos(Juego.Angulo - 2.5f) * 13;
+            float Lado2Y = NaveY - sin(Juego.Angulo - 2.5f) * 13;
 
             // Se dibuja la nave como un triangulo
-            al_draw_filled_triangle( PuntaX, PuntaY, Lado1X, Lado1Y, Lado2X, Lado2Y, Colores[ColorSeleccionado] );
+            al_draw_filled_triangle( PuntaX, PuntaY, Lado1X, Lado1Y, Lado2X, Lado2Y, Colores[Juego.ColorSeleccionado] );
 
             // se muestra el puntaje en la esquina superior izquierda
             // cada enemigo eliminado vale 100 puntos
-            std::string NombreEnTurno = std::string("Turno: ") + DatosPartida.Alias;
+            std::string NombreEnTurno = std::string("Turno: ") + Juego.DatosPartida.Alias;
             al_draw_text(Fuente, Colores[0], 400, 20, ALLEGRO_ALIGN_CENTRE, NombreEnTurno.c_str());
-            std::string TextoPuntaje = "Puntos: " + std::to_string(Puntaje);
+            std::string TextoPuntaje = "Puntos: " + std::to_string(Juego.Puntaje);
 
             al_draw_text( Fuente, Crema, 20, 20, 0, TextoPuntaje.c_str() );
 
@@ -1272,7 +625,7 @@ int main(int argc, char* argv[])
             al_draw_text(Fuente, Crema, x, 50, 0, "Vida");
 
             // se calcula cuanto debe llenarse la barra
-            float VidaActual = AnchoBarra * VidaNucleo / 100.0f;
+            float VidaActual = AnchoBarra * Juego.VidaNucleo / 100.0f;
 
             // Se dibuja el fondo gris
             al_draw_filled_rectangle( x, y, x + AnchoBarra, y + AltoBarra, al_map_rgb(80, 80, 80) );
@@ -1284,7 +637,7 @@ int main(int argc, char* argv[])
             al_draw_rectangle( x, y, x + AnchoBarra, y + AltoBarra, Crema, 1 );
 
             // muestra la oleada actual y el combo
-            std::string TextoOleada = "Oleada " + std::to_string(Oleada) + "  Combo x" + std::to_string(Combo);
+            std::string TextoOleada = "Oleada " + std::to_string(Juego.Oleada) + "  Combo x" + std::to_string(Juego.Combo);
 
             al_draw_text( Fuente, Crema, 780, 20, ALLEGRO_ALIGN_RIGHT, TextoOleada.c_str() );
 
@@ -1296,13 +649,13 @@ int main(int argc, char* argv[])
             al_draw_text( Fuente, Colores[2], 510, 545, ALLEGRO_ALIGN_CENTRE, "3 Ambar" );
 
             // barra para ver la carga del pulso
-            al_draw_text(Fuente, Crema, 680, 530, ALLEGRO_ALIGN_CENTRE, CargaPulso == 100 ? "ESPACIO Pulso" : "Pulso");
+            al_draw_text(Fuente, Crema, 680, 530, ALLEGRO_ALIGN_CENTRE, Juego.CargaPulso == 100 ? "ESPACIO Pulso" : "Pulso");
             al_draw_filled_rectangle(615, 566, 745, 578, Morado);
-            al_draw_filled_rectangle(615, 566, 615 + CargaPulso * 1.3f, 578, Colores[0]);
+            al_draw_filled_rectangle(615, 566, 615 + Juego.CargaPulso * 1.3f, 578, Colores[0]);
             al_draw_rectangle(615, 566, 745, 578, Crema, 1);
 
             // cuando termina una oleada se muestra un aviso
-            if (OleadaTerminada && !EnPausa)
+            if (Juego.OleadaTerminada && !Juego.EnPausa)
             {
                 // Fondo del aviso para que se pueda leer
                 al_draw_filled_rectangle( 210, 220, 590, 315, al_map_rgb(33, 29, 62) );
@@ -1318,7 +671,7 @@ int main(int argc, char* argv[])
             }
 
             // Si el juego esta en pausa, se muestra una ventana encima
-            if (EnPausa)
+            if (Juego.EnPausa)
             {
                 // fondo de la ventana de pausa
                 al_draw_filled_rectangle( 280, 200, 520, 340, al_map_rgb(33, 29, 62) );
@@ -1338,7 +691,7 @@ int main(int argc, char* argv[])
             }
 
             // Se muestra la pantalla de derrota cuando un enemigo llega al nucleo
-            if (GameOver)
+            if (Juego.GameOver)
             {
                 // Se cubre el juego con un fondo oscuro
                 al_draw_filled_rectangle( 0, 0, 800, 600, al_map_rgb(20, 17, 43) );
@@ -1347,7 +700,7 @@ int main(int argc, char* argv[])
                 al_draw_text( Fuente, Colores[1], 400, 190, ALLEGRO_ALIGN_CENTRE, "GAME OVER" );
 
                 // se muestra cuantos puntos conseguimos
-                std::string PuntosFinales = "Puntos: " + std::to_string(Puntaje);
+                std::string PuntosFinales = "Puntos: " + std::to_string(Juego.Puntaje);
 
                 al_draw_text( Fuente, Crema, 400, 260, ALLEGRO_ALIGN_CENTRE, PuntosFinales.c_str() );
 
@@ -1370,7 +723,7 @@ int main(int argc, char* argv[])
             }
 
             // Se muestra la pantalla de victoria al superar todas las oleadas
-            if (Victoria)
+            if (Juego.Victoria)
             {
                 // Fondo para que solo se vea el resultado
                 al_draw_filled_rectangle( 0, 0, 800, 600, al_map_rgb(20, 17, 43) );
@@ -1381,7 +734,7 @@ int main(int argc, char* argv[])
                 al_draw_text( Fuente, Crema, 400, 250, ALLEGRO_ALIGN_CENTRE, "Completaste las 5 oleadas" );
 
                 // Puntaje final
-                std::string PuntosFinales = "Puntos: " + std::to_string(Puntaje);
+                std::string PuntosFinales = "Puntos: " + std::to_string(Juego.Puntaje);
 
                 al_draw_text( Fuente, Colores[2], 400, 300, ALLEGRO_ALIGN_CENTRE, PuntosFinales.c_str() );
 
@@ -1404,6 +757,14 @@ int main(int argc, char* argv[])
             }
 
             // se muestra en pantalla todo lo que se dibuja
+            if (!CarpetaCapturas.empty() && PasoCaptura == 17)
+            {
+                if (!al_save_bitmap((CarpetaCapturas + "/jugar.png").c_str(), al_get_backbuffer(Ventana)))
+                    std::cerr << "No se pudo guardar la captura de la partida.\n";
+                if (!CapturaDuplicadoRechazado)
+                    std::cerr << "No se valido el rechazo de un alias duplicado.\n";
+                Salir = true;
+            }
             al_flip_display();
 
         } // Termina el evento del temporizador

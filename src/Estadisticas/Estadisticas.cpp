@@ -142,6 +142,31 @@ int Estadisticas::obtenerColorMejorPrecision(BitacoraEventos* bitacora, const st
     return -1;
 }
 
+double Estadisticas::calcularPrecisionColorHistorica(Historial* historial, const std::string& alias, int color) {
+    if (historial == nullptr || color < 0 || color >= 3) return 0.0;
+    long long correctos = 0;
+    long long erroneos = 0;
+    for (NodoHistorialCSVPtr nodo = historial->primero(); nodo != nullptr; nodo = nodo->siguiente) {
+        if (alias != nodo->dato->jugador) continue;
+        correctos += nodo->dato->correctos_color[color];
+        erroneos += nodo->dato->erroneos_color[color];
+    }
+    const long long impactos = correctos + erroneos;
+    return impactos == 0 ? 0.0 : 100.0 * correctos / impactos;
+}
+
+TipoEnemigo Estadisticas::obtenerEnemigoMasDanino(Historial* historial, const std::string& alias) {
+    if (historial == nullptr) return TipoEnemigo::Dron;
+    long long danoPorTipo[6]{};
+    for (NodoHistorialCSVPtr nodo = historial->primero(); nodo != nullptr; nodo = nodo->siguiente) {
+        if (alias != nodo->dato->jugador) continue;
+        for (int tipo = 0; tipo < 6; tipo++) danoPorTipo[tipo] += nodo->dato->dano_por_tipo[tipo];
+    }
+    int mayor = 0;
+    for (int tipo = 1; tipo < 6; tipo++) if (danoPorTipo[tipo] > danoPorTipo[mayor]) mayor = tipo;
+    return static_cast<TipoEnemigo>(mayor);
+}
+
 TipoEnemigo Estadisticas::obtenerEnemigoMasDanino(BitacoraEventos* bitacora, const std::string& alias) {
     if (bitacora == nullptr) return TipoEnemigo::Dron;
 
@@ -238,6 +263,12 @@ ResumenHistorico Estadisticas::calcularResumenHistorico(Historial* historial, co
         resumen.partidas_jugadas++;
         if (registro->posicion == 1) resumen.cantidad_victorias++;
         if (registro->oleada > resumen.oleada_maxima) resumen.oleada_maxima = registro->oleada;
+        for (int color = 0; color < 3; color++) {
+            resumen.correctos_color[color] += registro->correctos_color[color];
+            resumen.erroneos_color[color] += registro->erroneos_color[color];
+            resumen.bajas_color[color] += registro->bajas_color[color];
+        }
+        for (int tipo = 0; tipo < 6; tipo++) resumen.dano_por_tipo[tipo] += registro->dano_por_tipo[tipo];
     }
     resumen.media = calcularMedia(historial, alias);
     resumen.mediana = calcularMediana(historial, alias);
@@ -263,6 +294,25 @@ void Estadisticas::imprimirReporteHistorico(Historial* historial, const std::str
               << "\nMedia: " << resumen.media << "  Mediana: " << resumen.mediana
               << "  Desviacion: " << resumen.desviacion_estandar
               << "\nPrecision promedio: " << resumen.precision_promedio << "%\n";
+    const char* colores[] = {"Cian", "Magenta", "Ambar"};
+    for (int color = 0; color < 3; color++) {
+        std::cout << "Precision " << colores[color] << ": "
+                  << calcularPrecisionColorHistorica(historial, alias, color) << "%  Bajas: "
+                  << resumen.bajas_color[color] << '\n';
+    }
+    static const char* tipos[] = {"Dron", "Girador", "Divisor", "Mini", "Tanque", "Camaleon"};
+    const int indiceDanino = indiceEnemigo(obtenerEnemigoMasDanino(historial, alias));
+    long long danoTotal = 0;
+    for (int tipo = 0; tipo < 6; tipo++) danoTotal += resumen.dano_por_tipo[tipo];
+    if (danoTotal == 0) std::cout << "Sin dano recibido.\n";
+    else std::cout << "Mayor dano recibido: " << tipos[indiceDanino] << " ("
+                   << resumen.dano_por_tipo[indiceDanino] << ")\n";
+    std::cout << "Dano por tipo: ";
+    for (int tipo = 0; tipo < 6; tipo++) {
+        if (tipo > 0) std::cout << ", ";
+        std::cout << tipos[tipo] << '=' << resumen.dano_por_tipo[tipo];
+    }
+    std::cout << '\n';
     imprimirHistogramaASCII(historial, alias);
 }
 
@@ -295,7 +345,7 @@ void Estadisticas::imprimirLineaTiempo(BitacoraEventos* bitacora, JugadorPtr jug
         acumulado += resumen.puntos;
         if (resumen.tiene_eventos) {
             std::cout << "Oleada " << oleada << ": bajas " << resumen.bajas
-                      << ", dano " << resumen.dano << ", puntaje acumulado " << acumulado << '\n';
+                    << ", dano " << resumen.dano << ", puntaje acumulado " << acumulado << '\n';
         }
     }
 }

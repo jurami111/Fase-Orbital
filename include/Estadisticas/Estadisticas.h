@@ -15,6 +15,10 @@ typedef struct ResumenHistorico{
     double mediana;
     double desviacion_estandar;
     double precision_promedio;
+    int correctos_color[3]{};
+    int erroneos_color[3]{};
+    int bajas_color[3]{};
+    int dano_por_tipo[6]{};
 } *ResumenHistoricoPtr;
 
 struct ResultadoHistograma {
@@ -40,6 +44,8 @@ class Estadisticas {
         ResumenHistoricoPtr generarResumenHistorico(Historial* historial, const std::string& alias);
         ResumenHistorico calcularResumenHistorico(Historial* historial, const std::string& alias);
         double calcularPrecisionHistorica(Historial* historial, const std::string& alias);
+        double calcularPrecisionColorHistorica(Historial* historial, const std::string& alias, int color);
+        TipoEnemigo obtenerEnemigoMasDanino(Historial* historial, const std::string& alias);
         ResultadoHistograma calcularHistograma(Historial* historial, const std::string& alias);
         void imprimirReporteHistorico(Historial* historial, const std::string& alias);
         ResumenOleada calcularResumenOleada(BitacoraEventos* bitacora, JugadorPtr jugador, int oleada);

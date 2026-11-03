@@ -10,6 +10,10 @@ typedef struct HistorialCSV{
     int combo_max, pulsos, dano_total, ticks;
     int bajas_dron, bajas_girador, bajas_divisor;
     int bajas_mini, bajas_tanque, bajas_camaleon;
+    int correctos_color[3]{};
+    int erroneos_color[3]{};
+    int bajas_color[3]{};
+    int dano_por_tipo[6]{};
 }*HistorialCSVPtr;
 
 struct NodoHistorialCSV;

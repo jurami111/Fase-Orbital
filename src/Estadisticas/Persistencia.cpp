@@ -1,6 +1,7 @@
 #include "Persistencia.h"
 
 #include <cstring>
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -8,10 +9,17 @@
 const char* const Persistencia::FORMATO_CSV =
     "id_partida,semilla,modo,jugador,es_bot,posicion,puntaje,oleada,disparos,"
     "correctos,erroneos,combo_max,pulsos,dano_total,ticks,bajas_dron,"
-    "bajas_girador,bajas_divisor,bajas_mini,bajas_tanque,bajas_camaleon";
+    "bajas_girador,bajas_divisor,bajas_mini,bajas_tanque,bajas_camaleon,"
+    "correctos_cian,correctos_magenta,correctos_ambar,erroneos_cian,erroneos_magenta,erroneos_ambar,"
+    "bajas_cian,bajas_magenta,bajas_ambar,dano_dron,dano_girador,dano_divisor,dano_mini,dano_tanque,dano_camaleon";
 
 namespace {
-bool separarCSV(const std::string& linea, std::string (&campos)[21]) {
+const char* const FORMATO_CSV_ANTIGUO =
+    "id_partida,semilla,modo,jugador,es_bot,posicion,puntaje,oleada,disparos,"
+    "correctos,erroneos,combo_max,pulsos,dano_total,ticks,bajas_dron,"
+    "bajas_girador,bajas_divisor,bajas_mini,bajas_tanque,bajas_camaleon";
+
+bool separarCSV(const std::string& linea, std::string (&campos)[36], int esperados) {
     std::string campo;
     bool entreComillas = false;
     bool comillasCerradas = false;
@@ -31,7 +39,7 @@ bool separarCSV(const std::string& linea, std::string (&campos)[21]) {
                 entreComillas = true;
             }
         } else if (caracter == ',' && !entreComillas) {
-            if (cantidad == 21) return false;
+            if (cantidad == esperados) return false;
             campos[cantidad++] = campo;
             campo.clear();
             comillasCerradas = false;
@@ -42,9 +50,9 @@ bool separarCSV(const std::string& linea, std::string (&campos)[21]) {
     }
 
     if (entreComillas) return false;
-    if (cantidad == 21) return false;
+    if (cantidad == esperados) return false;
     campos[cantidad++] = campo;
-    return cantidad == 21;
+    return cantidad == esperados;
 }
 
 bool convertirEntero(const std::string& texto, int& valor) {
@@ -79,16 +87,21 @@ bool registroValido(const HistorialCSV& registro) {
         registro.dano_total, registro.ticks, registro.bajas_dron, registro.bajas_girador,
         registro.bajas_divisor, registro.bajas_mini, registro.bajas_tanque, registro.bajas_camaleon};
     for (int valor : valores) if (valor < 0) return false;
+    for (int color = 0; color < 3; color++) {
+        if (registro.correctos_color[color] < 0 || registro.erroneos_color[color] < 0 ||
+            registro.bajas_color[color] < 0) return false;
+    }
+    for (int tipo = 0; tipo < 6; tipo++) if (registro.dano_por_tipo[tipo] < 0) return false;
     return true;
 }
 
-bool convertirRegistro(const std::string (&campos)[21], HistorialCSVPtr registro) {
+bool convertirRegistro(const std::string (&campos)[36], int cantidadCampos, HistorialCSVPtr registro) {
     if (!copiarCampo(registro->modo, sizeof(registro->modo), campos[2]) ||
         !copiarCampo(registro->jugador, sizeof(registro->jugador), campos[3])) {
         return false;
     }
 
-    return convertirEntero(campos[0], registro->id_partida) &&
+    const bool datosBase = convertirEntero(campos[0], registro->id_partida) &&
            convertirEntero(campos[1], registro->semilla) &&
            convertirEntero(campos[4], registro->es_bot) &&
            convertirEntero(campos[5], registro->posicion) &&
@@ -106,7 +119,69 @@ bool convertirRegistro(const std::string (&campos)[21], HistorialCSVPtr registro
            convertirEntero(campos[17], registro->bajas_divisor) &&
            convertirEntero(campos[18], registro->bajas_mini) &&
            convertirEntero(campos[19], registro->bajas_tanque) &&
-           convertirEntero(campos[20], registro->bajas_camaleon) && registroValido(*registro);
+           convertirEntero(campos[20], registro->bajas_camaleon);
+    if (!datosBase) return false;
+    if (cantidadCampos == 36) {
+        for (int color = 0; color < 3; color++) {
+            if (!convertirEntero(campos[21 + color], registro->correctos_color[color]) ||
+                !convertirEntero(campos[24 + color], registro->erroneos_color[color]) ||
+                !convertirEntero(campos[27 + color], registro->bajas_color[color])) return false;
+        }
+        for (int tipo = 0; tipo < 6; tipo++) {
+            if (!convertirEntero(campos[30 + tipo], registro->dano_por_tipo[tipo])) return false;
+        }
+    }
+    return registroValido(*registro);
+}
+
+void escribirRegistroCSV(std::ostream& archivo, const HistorialCSV& registro) {
+    archivo << registro.id_partida << ',' << registro.semilla << ',' << escaparCSV(registro.modo) << ','
+            << escaparCSV(registro.jugador) << ',' << registro.es_bot << ',' << registro.posicion << ','
+            << registro.puntaje << ',' << registro.oleada << ',' << registro.disparos << ','
+            << registro.correctos << ',' << registro.erroneos << ',' << registro.combo_max << ','
+            << registro.pulsos << ',' << registro.dano_total << ',' << registro.ticks << ','
+            << registro.bajas_dron << ',' << registro.bajas_girador << ',' << registro.bajas_divisor << ','
+            << registro.bajas_mini << ',' << registro.bajas_tanque << ',' << registro.bajas_camaleon;
+    for (int color = 0; color < 3; color++) archivo << ',' << registro.correctos_color[color];
+    for (int color = 0; color < 3; color++) archivo << ',' << registro.erroneos_color[color];
+    for (int color = 0; color < 3; color++) archivo << ',' << registro.bajas_color[color];
+    for (int tipo = 0; tipo < 6; tipo++) archivo << ',' << registro.dano_por_tipo[tipo];
+    archivo << '\n';
+}
+
+bool migrarCSVAntiguo(const std::string& ruta) {
+    std::ifstream entrada(ruta);
+    if (!entrada.is_open()) return true;
+    std::string encabezado;
+    if (!std::getline(entrada, encabezado)) return true;
+    if (!encabezado.empty() && encabezado.back() == '\r') encabezado.pop_back();
+    if (encabezado == Persistencia::FORMATO_CSV) return true;
+    if (encabezado != FORMATO_CSV_ANTIGUO) return false;
+
+    const std::string temporal = ruta + ".tmp";
+    std::ofstream salida(temporal, std::ios::trunc);
+    if (!salida.is_open()) return false;
+    salida << Persistencia::FORMATO_CSV << '\n';
+    std::string linea;
+    std::size_t numeroLinea = 1;
+    while (std::getline(entrada, linea)) {
+        numeroLinea++;
+        if (!linea.empty() && linea.back() == '\r') linea.pop_back();
+        std::string campos[36];
+        HistorialCSV registro{};
+        if (!separarCSV(linea, campos, 21) || !convertirRegistro(campos, 21, &registro)) {
+            std::cerr << "Fila mal formada en línea " << numeroLinea << "; se omite durante la migración.\n";
+            continue;
+        }
+        escribirRegistroCSV(salida, registro);
+    }
+    entrada.close();
+    salida.close();
+    if (!salida || std::rename(temporal.c_str(), ruta.c_str()) != 0) {
+        std::remove(temporal.c_str());
+        return false;
+    }
+    return true;
 }
 }
 
@@ -130,7 +205,8 @@ bool Persistencia::cargarHistorial(const std::string& ruta, Historial* historial
         return valido;
     }
     if (!linea.empty() && linea.back() == '\r') linea.pop_back();
-    if (linea != FORMATO_CSV) {
+    const bool formatoAntiguo = linea == FORMATO_CSV_ANTIGUO;
+    if (linea != FORMATO_CSV && !formatoAntiguo) {
         std::cerr << "Encabezado CSV incorrecto en linea 1.\n";
         archivo.close();
         return false;
@@ -140,9 +216,11 @@ bool Persistencia::cargarHistorial(const std::string& ruta, Historial* historial
     while (std::getline(archivo, linea)) {
         numeroLinea++;
         if (!linea.empty() && linea.back() == '\r') linea.pop_back();
-        std::string campos[21];
+        std::string campos[36];
         HistorialCSVPtr registro = new HistorialCSV{};
-        const bool valido = separarCSV(linea, campos) && convertirRegistro(campos, registro);
+        const int cantidadCampos = formatoAntiguo ? 21 : 36;
+        const bool valido = separarCSV(linea, campos, cantidadCampos) &&
+                    convertirRegistro(campos, cantidadCampos, registro);
         if (!valido) {
             std::cerr << "Fila mal formada en línea " << numeroLinea << "; se omite.\n";
             delete registro;
@@ -169,6 +247,10 @@ bool Persistencia::guardarPartida(const std::string& ruta, JugadorPtr jugador, i
     HistorialCSV registro{};
     if (!crearRegistro(jugador, idPartida, semilla, modo, registro)) {
         std::cerr << "No se puede guardar la partida: datos invalidos.\n";
+        return false;
+    }
+    if (!migrarCSVAntiguo(ruta)) {
+        std::cerr << "No se pudo migrar el historial CSV antiguo.\n";
         return false;
     }
 
@@ -199,14 +281,7 @@ bool Persistencia::guardarPartida(const std::string& ruta, JugadorPtr jugador, i
     if (escribirEncabezado) archivo << FORMATO_CSV << '\n';
     else if (faltaSalto) archivo << '\n';
 
-    archivo << idPartida << ',' << semilla << ',' << escaparCSV(modo) << ','
-            << escaparCSV(jugador->Alias) << ',' << (jugador->isBot ? 1 : 0) << ','
-            << jugador->posicion << ',' << jugador->puntaje << ',' << jugador->numero_oleada << ','
-            << jugador->disparos << ',' << jugador->correctos << ',' << jugador->erroneos << ','
-            << jugador->combo_max << ',' << jugador->pulsos << ',' << jugador->dano_total << ','
-            << jugador->ticks << ',' << jugador->bajas_dron << ',' << jugador->bajas_girador << ','
-            << jugador->bajas_divisor << ',' << jugador->bajas_mini << ',' << jugador->bajas_tanque
-            << ',' << jugador->bajas_camaleon << '\n';
+    escribirRegistroCSV(archivo, registro);
 
     archivo.close();
     if (!archivo) {
@@ -243,6 +318,12 @@ bool Persistencia::crearRegistro(JugadorPtr jugador, int idPartida, int semilla,
     registro.bajas_mini = jugador->bajas_mini;
     registro.bajas_tanque = jugador->bajas_tanque;
     registro.bajas_camaleon = jugador->bajas_camaleon;
+    for (int color = 0; color < 3; color++) {
+        registro.correctos_color[color] = jugador->correctos_color[color];
+        registro.erroneos_color[color] = jugador->erroneos_color[color];
+        registro.bajas_color[color] = jugador->bajas_color[color];
+    }
+    for (int tipo = 0; tipo < 6; tipo++) registro.dano_por_tipo[tipo] = jugador->dano_por_tipo[tipo];
     return registroValido(registro);
 }
 
@@ -259,12 +340,44 @@ bool Persistencia::guardarPartidaCompleta(const std::string& ruta, JugadorPtr ju
         }
         if (registros[indice].posicion > cantidad) return false;
     }
-    for (int indice = 0; indice < cantidad; indice++) {
-        HistorialCSVPtr copia = new HistorialCSV(registros[indice]);
-        if (!guardarPartida(ruta, jugadores[indice], id, semilla, modo)) {
-            delete copia;
+
+    if (!migrarCSVAntiguo(ruta)) {
+        std::cerr << "No se pudo preparar el historial CSV para guardar.\n";
+        return false;
+    }
+
+    const std::string temporal = ruta + ".tmp";
+    std::ifstream entrada(ruta);
+    std::ofstream salida(temporal, std::ios::trunc);
+    if (!salida.is_open()) return false;
+
+    std::string encabezado;
+    const bool archivoConDatos = entrada.is_open() && static_cast<bool>(std::getline(entrada, encabezado));
+    if (archivoConDatos) {
+        if (!encabezado.empty() && encabezado.back() == '\r') encabezado.pop_back();
+        if (encabezado != FORMATO_CSV) {
+            entrada.close();
+            salida.close();
+            std::remove(temporal.c_str());
             return false;
         }
+        salida << encabezado << '\n';
+        std::string linea;
+        while (std::getline(entrada, linea)) salida << linea << '\n';
+    } else {
+        salida << FORMATO_CSV << '\n';
+    }
+    entrada.close();
+    for (int indice = 0; indice < cantidad; indice++) escribirRegistroCSV(salida, registros[indice]);
+    salida.close();
+    if (!salida || std::rename(temporal.c_str(), ruta.c_str()) != 0) {
+        std::remove(temporal.c_str());
+        std::cerr << "No se pudo confirmar el historial completo.\n";
+        return false;
+    }
+
+    for (int indice = 0; indice < cantidad; indice++) {
+        HistorialCSVPtr copia = new HistorialCSV(registros[indice]);
         try {
             historial->InsertarFinal(copia);
         } catch (...) {

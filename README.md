@@ -2,11 +2,11 @@
 
 ## Estado Actual
 
-El main original conserva su dibujo, controles, fuente TTF y temporizador.
-La pantalla inicial tiene cuatro botones: Jugar, Ranking, Estadisticas y Salir.
-Jugar muestra el prototipo original; los reportes usan la misma ventana.
-El prototipo de la orbita no es una partida completa y no guarda resultados.
-El motor, bots, scripts, resumen final y pantallas ligadas a partidas aun necesitan integracion.
+El juego en Allegro incluye registro de nombres unicos, partidas por turnos de
+hasta seis jugadores, oleadas deterministas, seis tipos de enemigo, puntaje/combo,
+pulso, daño al nucleo, bitacora, estadisticas historicas y ranking. Los alias
+`BOT...` se marcan en el historial, pero aun no tienen control automatico.
+Scripts de acciones y ejecucion por lotes tampoco estan implementados.
 
 ## Compilar Y Ejecutar En macOS
 
@@ -45,29 +45,34 @@ Este CSV contiene datos sinteticos para pruebas, no evidencia de partidas jugada
 make pruebas
 ```
 
-El main original usa Allegro; ya no acepta --estadisticas o --ranking por consola.
-El objetivo de compilacion de consola necesita un punto de entrada separado antes de usarse.
-Un archivo ausente o con encabezado incorrecto
-produce un error; las filas invalidas se informan y omiten. La ventana muestra
-un aviso si no pudo cargar el historial. Abrir reportes no escribe el archivo.
+La aplicacion principal usa Allegro; no acepta --estadisticas o --ranking por
+consola. Un archivo ausente o con encabezado incorrecto produce un aviso; las
+filas invalidas se informan y omiten. Abrir reportes no escribe el historial.
 
-## Integracion Con El Motor
+## Partida Y Persistencia
 
-Al finalizar una partida, asignar posiciones de 1 a cantidad y llamar a
-`Persistencia::guardarPartidaCompleta` con todos los jugadores, incluidos los eliminados,
-el historial cargado, semilla y modo. Genera un id comun y actualiza el historial
-despues de cada escritura exitosa. Reconstruir el ranking despues con
-`Ranking::ConstruirDesdeHistorial`. Si falla una escritura, no reintentar a ciegas:
-las filas anteriores pueden haberse guardado; no es una transaccion atomica.
+La partida actual asigna posiciones y llama a `Persistencia::guardarPartidaCompleta`
+con todos los jugadores, incluidos los eliminados. El guardado valida las filas,
+escribe un archivo temporal y reemplaza el CSV solo cuando todas las escrituras
+terminan bien. El historial y el ranking se actualizan despues de guardar.
 
-`Estadisticas::calcularResumenHistorico` devuelve datos por valor. La variante
+`Estadisticas::calcularResumenHistorico` devuelve datos por valor, incluyendo
+precision y bajas por color y dano por tipo. La variante
 `generarResumenHistorico` devuelve un puntero que el llamador debe liberar con `delete`.
 La precision historica es el promedio de precisiones por partida; una partida
 sin impactos aporta cero. `calcularResumenOleada` e `imprimirLineaTiempo` usan
 eventos BAJA cuyo valor es el puntaje ganado, y eventos de dano sin duplicarlos.
 
-El CSV conserva las 21 columnas del enunciado. Precision por color y dano por tipo
-no pueden reconstruirse historicamente con ese formato: falta acordar su persistencia.
+El CSV actual tiene 36 columnas: las 21 originales mas impactos y bajas por color
+y daño recibido por tipo.
+Los CSV antiguos de 21 columnas se pueden cargar; se migran al formato actual
+cuando se guarda una partida nueva. La migracion mantiene sus registros antiguos
+y deja en cero las metricas que ese formato no almacenaba.
+
+La bitacora de eventos se mantiene durante la partida. Registra bajas, impactos
+erroneos, dano al nucleo, choques, pulsos, fin de oleada y eliminaciones. Al final
+se imprime la linea de tiempo de cada jugador; el historial y las columnas nuevas
+guardan las metricas necesarias para los reportes posteriores.
 
 ## Capturas De Verificacion
 
@@ -77,4 +82,5 @@ mkdir -p build/capturas
 ```
 
 Genera principal.png (menu), jugar.png, estadisticas.png y ranking.png.
-Comprueba los clics sobre los botones del main y el retorno, y cierra sin modificar el historial.
+El recorrido automatizado registra un jugador, agrega y comienza una partida,
+y cierra despues del primer tick sin modificar el historial proporcionado.

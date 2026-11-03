@@ -401,6 +401,10 @@ bool pruebaReportesYRanking() {
     historial.ultimo()->dato->posicion = 1;
     historial.ultimo()->dato->correctos = 3;
     historial.ultimo()->dato->erroneos = 1;
+    historial.ultimo()->dato->correctos_color[0] = 2;
+    historial.ultimo()->dato->erroneos_color[0] = 1;
+    historial.ultimo()->dato->bajas_color[0] = 1;
+    historial.ultimo()->dato->dano_por_tipo[4] = 12;
     agregarPuntaje(historial, 300);
     historial.ultimo()->dato->posicion = 2;
     historial.ultimo()->dato->correctos = 1;
@@ -420,6 +424,12 @@ bool pruebaReportesYRanking() {
                             resumen.media == 200.0 && resumen.mediana == 200.0 &&
                             resumen.desviacion_estandar == 100.0 && resumen.precision_promedio == 50.0,
                             "resumen historico y promedio por partida");
+    valido &= verificar(resumen.correctos_color[0] == 2 && resumen.erroneos_color[0] == 1 &&
+                        resumen.bajas_color[0] == 1 && resumen.dano_por_tipo[4] == 12 &&
+                        std::fabs(estadisticas.calcularPrecisionColorHistorica(&historial, "Ana", 0) -
+                                  200.0 / 3.0) < 0.000001 &&
+                        estadisticas.obtenerEnemigoMasDanino(&historial, "Ana") == TipoEnemigo::Tanque,
+                        "resumen agrega precision por color, bajas y dano por tipo");
     Ranking ranking;
     ranking.ConstruirDesdeHistorial(&historial);
     valido &= verificar(std::strcmp(ranking.Top(1)->dato->Alias, "Luis") == 0 &&
@@ -475,6 +485,10 @@ bool pruebaPersistencia(const std::string& ruta) {
     std::strcpy(jugador.Alias, "Ana,\"Luz\"");
     jugador.posicion = 1;
     jugador.puntaje = 10;
+    jugador.correctos_color[0] = 2;
+    jugador.erroneos_color[0] = 1;
+    jugador.bajas_color[2] = 1;
+    jugador.dano_por_tipo[4] = 12;
     bool valido = persistencia.guardarPartida(ruta, &jugador, 1, 42, "turnos");
     jugador.puntaje = 20;
     valido &= persistencia.guardarPartida(ruta, &jugador, 2, 42, "turnos");
@@ -482,8 +496,12 @@ bool pruebaPersistencia(const std::string& ruta) {
     valido &= persistencia.cargarHistorial(ruta, &historial);
     Estadisticas estadisticas;
     valido &= verificar(historial.tamano() == 2 &&
-                        estadisticas.calcularMediana(&historial, jugador.Alias) == 15.0,
-                        "guardar y recargar conserva alias con comas y comillas");
+                        estadisticas.calcularMediana(&historial, jugador.Alias) == 15.0 &&
+                        historial.primero()->dato->correctos_color[0] == 2 &&
+                        historial.primero()->dato->erroneos_color[0] == 1 &&
+                        historial.primero()->dato->bajas_color[2] == 1 &&
+                        historial.primero()->dato->dano_por_tipo[4] == 12,
+                        "CSV conserva alias y contadores nuevos");
     std::ifstream lectura(ruta);
     std::string encabezado, primera, segunda;
     std::getline(lectura, encabezado);
@@ -521,6 +539,41 @@ bool pruebaPersistencia(const std::string& ruta) {
     return valido;
 }
 
+bool pruebaMigracionCSVAntiguo(const std::string& ruta) {
+    const std::string encabezadoAntiguo =
+        "id_partida,semilla,modo,jugador,es_bot,posicion,puntaje,oleada,disparos,"
+        "correctos,erroneos,combo_max,pulsos,dano_total,ticks,bajas_dron,"
+        "bajas_girador,bajas_divisor,bajas_mini,bajas_tanque,bajas_camaleon";
+    {
+        std::ofstream archivo(ruta);
+        archivo << encabezadoAntiguo << '\n'
+                << "1,42,turnos,Ana,0,1,100,2,4,3,1,1,0,10,30,1,0,0,0,0,0\n";
+    }
+    Persistencia persistencia;
+    Historial leido;
+    bool valido = persistencia.cargarHistorial(ruta, &leido);
+    Jugador nuevo;
+    std::strcpy(nuevo.Alias, "Luis");
+    nuevo.posicion = 2;
+    nuevo.puntaje = 80;
+    nuevo.correctos_color[1] = 2;
+    nuevo.dano_por_tipo[0] = 10;
+    valido &= persistencia.guardarPartida(ruta, &nuevo, 2, 43, "turnos");
+
+    std::ifstream archivo(ruta);
+    std::string encabezado;
+    std::getline(archivo, encabezado);
+    archivo.close();
+    Historial migrado;
+    valido &= persistencia.cargarHistorial(ruta, &migrado);
+    valido &= verificar(encabezado == Persistencia::FORMATO_CSV && migrado.tamano() == 2 &&
+                        migrado.primero()->dato->correctos_color[0] == 0 &&
+                        migrado.ultimo()->dato->correctos_color[1] == 2 &&
+                        migrado.ultimo()->dato->dano_por_tipo[0] == 10,
+                        "CSV antiguo se migra y conserva sus filas con nuevos campos en cero");
+    return valido;
+}
+
 void reportar(const char* nombre, bool resultado, int& fallidas) {
     std::cout << nombre << (resultado ? " PASS\n" : " FAIL\n");
     if (!resultado) fallidas++;
@@ -544,6 +597,7 @@ int main(int argc, char* argv[]) {
     reportar("R01", pruebaReportesYRanking(), fallidas);
     if (argc > 1) reportar("CSV02", pruebaGuardarParticipantes(std::string(argv[1]) + ".partida"), fallidas);
     if (argc > 1) reportar("CSV01", pruebaPersistencia(argv[1]), fallidas);
+    if (argc > 1) reportar("CSV03", pruebaMigracionCSVAntiguo(std::string(argv[1]) + ".legacy"), fallidas);
     std::cout << (fallidas == 0 ? "Todas las pruebas pasaron.\n" : "Hay pruebas fallidas.\n");
     return fallidas == 0 ? 0 : 1;
 }

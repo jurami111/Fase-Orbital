@@ -10,6 +10,8 @@ typedef struct Jugador {
     int bajas_mini, bajas_tanque, bajas_camaleon;
     int correctos_color[3]{};
     int erroneos_color[3]{};
+    int bajas_color[3]{};
+    int dano_por_tipo[6]{};
 
     Jugador()
         : Alias{}, isBot(false), puntaje(0), combo(0), carga_pulso(0),

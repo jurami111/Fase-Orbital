@@ -7,6 +7,10 @@ BitacoraEventos::BitacoraEventos() {
 }
 
 BitacoraEventos::~BitacoraEventos(){
+    Limpiar();
+}
+
+void BitacoraEventos::Limpiar() {
     NodoEventoPtr actual = primerNodo;
     while (actual != nullptr) {
         NodoEventoPtr siguiente = actual->siguiente;
