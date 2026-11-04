@@ -31,8 +31,25 @@ struct Sonidos {
         return true;
     }
 
+    // Reproduce cada sonido con un volumen diferente
     void Reproducir(ALLEGRO_SAMPLE* sonido) {
-        if (sonido) al_play_sample(sonido, 0.6f, 0.0f, 1.0f, ALLEGRO_PLAYMODE_ONCE, nullptr);
+        if (sonido == nullptr) {
+            return;
+        }
+
+        float volumen = 0.7f;
+
+        if (sonido == disparo) {
+            volumen = 0.08f; // Disparo muy bajito
+        } else if (sonido == error) {
+            volumen = 0.8f; // Impacto incorrecto
+        } else if (sonido == nucleo) {
+            volumen = 0.9f; // Daño al núcleo
+        } else if (sonido == pulso) {
+            volumen = 1.0f; // Activación del pulso
+        }
+
+        al_play_sample(sonido, volumen, 0.0f, 1.0f, ALLEGRO_PLAYMODE_ONCE, nullptr);
     }
 
     void Liberar() {

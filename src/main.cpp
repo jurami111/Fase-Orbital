@@ -570,51 +570,55 @@ int main(int argc, char* argv[])
             {
                 // Se toma los datos del enemigo actual
                 Enemigo* Actual = EnemigoDibujo->dato;
+                // Aumentamos el tamaño visual de los enemigos
+                float RadioDibujo = Actual->radio * 1.5f;
 
                 // se calcula su posicion alrededor del nucleo
                 float x = 400 + cos(Actual->theta) * Actual->r;
                 float y = 310 - sin(Actual->theta) * Actual->r;
 
+                
                 // Cada enemigo tiene una forma sencilla
                 if (Actual->tipo == TipoEnemigo::Tanque)
                 {
-                    al_draw_filled_rectangle(x - Actual->radio, y - Actual->radio,
-                                             x + Actual->radio, y + Actual->radio, Colores[Actual->color]);
-                    al_draw_filled_rectangle(x - Actual->radio / 2, y - Actual->radio / 2,
-                                             x + Actual->radio / 2, y + Actual->radio / 2, Fondo);
+                    al_draw_filled_rectangle(x - RadioDibujo, y - RadioDibujo,
+                                             x + RadioDibujo, y + RadioDibujo, Colores[Actual->color]);
+                    al_draw_filled_rectangle(x - RadioDibujo / 2, y - RadioDibujo / 2,
+                                             x + RadioDibujo / 2, y + RadioDibujo / 2, Fondo);
                 }
                 else if (Actual->tipo == TipoEnemigo::Girador)
                 {
-                    al_draw_filled_triangle(x, y - Actual->radio, x - Actual->radio, y + Actual->radio,
-                                            x + Actual->radio, y + Actual->radio, Colores[Actual->color]);
+                    al_draw_filled_triangle(x, y - RadioDibujo, x - RadioDibujo, y + RadioDibujo,
+                                            x + RadioDibujo, y + RadioDibujo, Colores[Actual->color]);
                     al_draw_filled_circle(x, y, 2, Fondo);
                 }
                 else if (Actual->tipo == TipoEnemigo::Divisor)
                 {
-                    al_draw_filled_rectangle(x - Actual->radio, y - Actual->radio,
-                                             x + Actual->radio, y + Actual->radio, Colores[Actual->color]);
-                    al_draw_line(x - Actual->radio + 1, y - Actual->radio + 1,
-                                 x + Actual->radio - 1, y + Actual->radio - 1, Fondo, 2);
+                    al_draw_filled_rectangle(x - RadioDibujo, y - RadioDibujo,
+                                             x + RadioDibujo, y + RadioDibujo, Colores[Actual->color]);
+                    al_draw_line(x - RadioDibujo + 1, y - RadioDibujo + 1,
+                                 x + RadioDibujo - 1, y + RadioDibujo - 1, Fondo, 2);
                 }
                 else if (Actual->tipo == TipoEnemigo::Mini)
                 {
-                    al_draw_filled_triangle(x, y - Actual->radio, x - Actual->radio, y + Actual->radio,
-                                            x + Actual->radio, y + Actual->radio, Colores[Actual->color]);
+                    al_draw_filled_triangle(x, y - RadioDibujo, x - RadioDibujo, y + RadioDibujo,
+                                            x + RadioDibujo, y + RadioDibujo, Colores[Actual->color]);
                 }
                 else if (Actual->tipo == TipoEnemigo::Camaleon)
                 {
-                    al_draw_filled_ellipse(x, y, Actual->radio, Actual->radio, Colores[Actual->color]);
+                    al_draw_filled_ellipse(x, y, RadioDibujo, RadioDibujo, Colores[Actual->color]);
                     al_draw_filled_circle(x, y, 2, Fondo);
                 }
                 else
                 {
-                    // el dron es un rombo relleno
-                    al_draw_filled_triangle(x, y - Actual->radio, x + Actual->radio, y,
-                                            x - Actual->radio, y, Colores[Actual->color]);
-                    al_draw_filled_triangle(x, y + Actual->radio, x + Actual->radio, y,
-                                            x - Actual->radio, y, Colores[Actual->color]);
+                    // El dron es un rombo relleno
+                    al_draw_filled_triangle(x, y - RadioDibujo, x + RadioDibujo, y,
+                                            x - RadioDibujo, y, Colores[Actual->color]);
+                    al_draw_filled_triangle(x, y + RadioDibujo, x + RadioDibujo, y,
+                                            x - RadioDibujo, y, Colores[Actual->color]);
                 }
 
+                
                 // se pasa al siguiente enemigo
                 EnemigoDibujo = EnemigoDibujo->siguiente;
             }
