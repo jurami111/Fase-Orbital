@@ -18,6 +18,7 @@
 #include "Estadisticas/BitacoraEventos.h"
 #include "Motor/Motor.h"
 #include "Vista/Controlador.h"
+#include "Sonido/Sonidos.h"
 
 namespace {
 Accion TraducirTecla(int tecla)
@@ -91,6 +92,9 @@ int main(int argc, char* argv[])
     al_init_primitives_addon(); // Para dibujar circulos y otras figuras
     al_init_font_addon();       // Para mostrar textos
     al_init_ttf_addon();        // para cargar fuentes de Windows
+
+    Sonidos Audio; // sonidos del juego
+    if (!Audio.Iniciar()) return 1;
 
     if (!CarpetaCapturas.empty() && !al_init_image_addon())
     {
@@ -353,7 +357,14 @@ int main(int argc, char* argv[])
 
             // al terminar se puede regresar al menu con ESC
             // El reinicio se hace cuando se vuelve a presionar Jugar
+            // revisamos si se activo el pulso al presionar una tecla
+            bool PulsoAntes = Juego.PulsoActivo;
+
             Controlador::Presionar(TraducirTecla(Evento.keyboard.keycode), Juego, EnMenu, EnNombre);
+
+            if (!PulsoAntes && Juego.PulsoActivo) {
+                Audio.Reproducir(Audio.pulso);
+            }
         }
 
         // se escribe el alias antes de iniciar la partida
@@ -481,13 +492,39 @@ int main(int argc, char* argv[])
                 al_flip_display(); // se muestra el menu
                 continue; // No actualizamos la partida mientras estamos aqui
             }
-            if (Juego.DatosPartida.isBot){
+            
+            
+            // guardamos los valores antes de actualizar la partida
+            int DisparosAntes = Juego.DatosPartida.disparos;
+            int ErroresAntes = Juego.DatosPartida.erroneos;
+            int VidaAntes = Juego.VidaNucleo;
+            bool PulsoAntes = Juego.PulsoActivo;
+
+            // actualizamos la partida segun el jugador
+            if (Juego.DatosPartida.isBot) {
                 AccionesTick acciones = Controlador::AccionesBot(Juego);
                 Juego.AvanzarTick(acciones);
-            } else{
+            } else {
                 Juego.AvanzarTick();
             }
-              // los dibujos quedan afuera para mostrar Game Over y Victoria
+
+            // reproducimos los sonidos cuando ocurre cada accion
+            if (Juego.DatosPartida.disparos > DisparosAntes) {
+                Audio.Reproducir(Audio.disparo);
+            }
+
+            if (Juego.DatosPartida.erroneos > ErroresAntes) {
+                Audio.Reproducir(Audio.error);
+            }
+
+            if (Juego.VidaNucleo < VidaAntes) {
+                Audio.Reproducir(Audio.nucleo);
+            }
+
+            if (!PulsoAntes && Juego.PulsoActivo) {
+                Audio.Reproducir(Audio.pulso);
+            }
+
 
             // Se guardan la partida una sola vez al terminar
             if ((Juego.GameOver || Juego.Victoria) && !GuardadoIntentado)
@@ -778,6 +815,7 @@ int main(int argc, char* argv[])
     } // termina el ciclo principal del juego
 
     // Se liberan los recursos antes de cerrar el programa
+    Audio.Liberar(); // liberamos los sonidos
     al_destroy_font(Fuente); // Se liberan la fuente
     al_destroy_timer(Timer); // se liberan el temporizador
     al_destroy_event_queue(Cola); // se liberan la cola de eventos
