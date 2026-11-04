@@ -353,7 +353,6 @@ int main(int argc, char* argv[])
 
             // al terminar se puede regresar al menu con ESC
             // El reinicio se hace cuando se vuelve a presionar Jugar
-
             Controlador::Presionar(TraducirTecla(Evento.keyboard.keycode), Juego, EnMenu, EnNombre);
         }
 
@@ -414,8 +413,10 @@ int main(int argc, char* argv[])
                 continue;
             }
 
-            if (Juego.EnTurno)
+            if (!Juego.DatosPartida.isBot)
             {
+                if (Juego.EnTurno)
+                {
                 al_clear_to_color(Fondo);
                 al_draw_text(Fuente, Colores[0], 400, 170, ALLEGRO_ALIGN_CENTRE, "SIGUIENTE TURNO");
                 al_draw_text(Fuente, Crema, 400, 245, ALLEGRO_ALIGN_CENTRE, Juego.DatosPartida.Alias);
@@ -424,6 +425,7 @@ int main(int argc, char* argv[])
                 al_draw_text(Fuente, Colores[2], 400, 365, ALLEGRO_ALIGN_CENTRE, "Presione ENTER para jugar");
                 al_flip_display();
                 continue;
+            }
             }
 
             // Primero se revisa si estamos en el menu
@@ -479,8 +481,12 @@ int main(int argc, char* argv[])
                 al_flip_display(); // se muestra el menu
                 continue; // No actualizamos la partida mientras estamos aqui
             }
-
-            Juego.AvanzarTick();
+            if (Juego.DatosPartida.isBot){
+                AccionesTick acciones = Controlador::AccionesBot(Juego);
+                Juego.AvanzarTick(acciones);
+            } else{
+                Juego.AvanzarTick();
+            }
               // los dibujos quedan afuera para mostrar Game Over y Victoria
 
             // Se guardan la partida una sola vez al terminar

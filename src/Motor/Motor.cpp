@@ -2,7 +2,7 @@
 
 #include <cctype>
 #include <cstring>     // Para copiar el alias del jugador
-
+#include "Controlador.h"
 #include <cmath>       // para calcular las posiciones con seno y coseno
 #include <ctime>       // Para cambiar los numeros aleatorios en cada partida
 
@@ -219,6 +219,29 @@ void Motor::PrepararTurno()
     }
     EnemigosPendientes = ColaOriginal; // copia la cola para este jugador
     EnTurno = true;
+}
+
+void Motor::AvanzarTick(AccionesTick Acciones)
+{
+    Izquierda = Acciones.Izquierda;
+    Derecha = Acciones.Derecha;
+    ColorSeleccionado = Acciones.color;
+    Angulo = ActualizarAngulo(Acciones.angulo);
+    RadioPulso = Acciones.Radio;
+    AvanzarTick();
+}
+
+float Motor::ActualizarAngulo(double anguloObjetivo)
+{
+    // Calcula la diferencia entre el angulo objetivo y el actual
+    double diferencia = anguloObjetivo - Angulo;
+
+     diferencia -= 2.0 * Pi;
+    diferencia += 2.0 * Pi;
+
+    // Actualiza el angulo actual hacia el objetivo
+    Angulo += static_cast<float>(diferencia);
+    return Angulo;
 }
 
 // empieza cuando ya se anotaron todos
@@ -588,6 +611,14 @@ void Motor::AvanzarTick()
             TerminarTurno(false);
         }
     } // Se cierra la actualizacion de la partida
+}
+bool Motor::CanActivarPulso()
+{
+    if (CargaPulso == 100 && !PulsoActivo)
+    {
+        return true;
+    }
+    return false;
 }
 
 void Motor::ActivarPulso()

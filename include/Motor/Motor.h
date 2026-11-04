@@ -11,6 +11,16 @@
 
 const double Pi = 3.14159265358979323846;
 
+typedef struct AccionesTick
+{
+    bool Izquierda;
+    bool Derecha;
+    int color;
+    double angulo;
+    float Radio; 
+    bool Pulso;
+} AccionesTick;
+
 class Motor
 {
 public:
@@ -65,12 +75,15 @@ public:
     void GuardarJugador();
     void IniciarMultijugador();
     void AvanzarTick();
+    bool CanActivarPulso();
     void ActivarPulso();
     void CalcularPosiciones();
     bool RegistrarNombre(std::string& NombreJugador, std::string& AvisoRegistro);
     void ReiniciarRegistro();
     void ReiniciarDesdeVictoria();
     void ReiniciarDesdeMenu();
+    void AvanzarTick(AccionesTick Acciones);
+    float ActualizarAngulo(double anguloObjetivo);
 
 private:
     void RegistrarEvento(TipoEvento tipo, TipoEnemigo enemigo, int color, int valor);
