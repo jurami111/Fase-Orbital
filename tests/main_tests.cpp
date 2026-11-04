@@ -1019,9 +1019,9 @@ bool pruebaP14() {
         for (bool jugada : jugador) if (jugada) turnos++;
     std::cout << "P14 escenario: " << ticks << " ticks, " << turnos
               << "/40 turnos, " << contarEventos(motor, TipoEvento::FIN_OLEADA)
-              << "/40 oleadas completadas.\n";
+              << "/10 oleadas completadas.\n";
     return verificar(ticks < 200000 && motor.Victoria && motor.Oleada == 10 && turnos == 40 &&
-                     contarEventos(motor, TipoEvento::FIN_OLEADA) == 40 &&
+                     contarEventos(motor, TipoEvento::FIN_OLEADA) == 10 &&
                      contarEventos(motor, TipoEvento::ELIMINACION) == 0,
                      "P14: cuatro bots completan las diez oleadas sin alterar vidas ni reglas");
 }

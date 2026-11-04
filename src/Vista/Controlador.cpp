@@ -1,6 +1,6 @@
 #include "Vista/Controlador.h"
 #include "Motor/Motor.h"
-
+#include <iostream>
 
 
 void Controlador::Presionar(Accion accion, Motor& Juego, bool EnMenu, bool EnNombre)
@@ -88,14 +88,9 @@ AccionesTick Controlador::AccionesBot(Motor& estadoMotor)
         int enemigoColor = enemigo->color; // se puede usar para decidir las acciones del bot
         if (enemigo->r > 100 && enemigo->r < EnemigoaAtacar){
             EnemigoaAtacar = enemigo->r;
+            Acciones.angulo = enemigoAngulo;
             EnemigoColor = enemigoColor;
-            EnemigoAngulo = enemigoAngulo;
             hayObjetivo = true;
-            diferencia = EnemigoAngulo - Acciones.angulo;
-            if (diferencia > Pi)
-                diferencia -= 2 * Pi;
-            if (diferencia < -Pi)
-                diferencia += 2 * Pi;
         }
 
         if (enemigo->r < 160) cantidadEnemigos++;
@@ -109,16 +104,6 @@ AccionesTick Controlador::AccionesBot(Motor& estadoMotor)
     }
 
     if (EnemigoColor != -1) Acciones.color = EnemigoColor;
-
-
-    if (diferencia > 0)
-    {
-        Acciones.Izquierda = true;
-    }
-    else if (diferencia < 0)
-    {
-        Acciones.Derecha = true;
-    }
 
     if (cantidadEnemigos >= 5)
     {

@@ -1,5 +1,5 @@
 #include "Motor/Motor.h"
-
+#include <algorithm>   // Para std::max y std::min
 #include <cctype>
 #include <cstring>     // Para copiar el alias del jugador
 #include "Controlador.h"
@@ -236,11 +236,10 @@ float Motor::ActualizarAngulo(double anguloObjetivo)
     // Calcula la diferencia entre el angulo objetivo y el actual
     double diferencia = anguloObjetivo - Angulo;
 
-     diferencia -= 2.0 * Pi;
-    diferencia += 2.0 * Pi;
+    double restante = remainder(diferencia, 2.0 * Pi);
 
     // Actualiza el angulo actual hacia el objetivo
-    Angulo += static_cast<float>(diferencia);
+    Angulo += std::max(-0.10472, std::min(0.10472, restante));
     return Angulo;
 }
 
