@@ -7,13 +7,22 @@
 #include "../include/Estadisticas/Estadisticas.h"
 #include "../include/Estadisticas/Persistencia.h"
 #include "../include/Estadisticas/Ranking.h"
+#include "../include/Vista/Controlador.h"
 
+#include <array>
+#include <cerrno>
 #include <cmath>
+#include <cstdio>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <sstream>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <vector>
 
 namespace {
 bool verificar(bool condicion, const char* mensaje) {
@@ -574,6 +583,554 @@ bool pruebaMigracionCSVAntiguo(const std::string& ruta) {
     return valido;
 }
 
+class CapturaFlujo {
+    std::ostream& flujo;
+    std::ostringstream salida;
+    std::streambuf* anterior;
+    std::ios::fmtflags formato;
+    std::streamsize precision;
+    char relleno;
+public:
+    explicit CapturaFlujo(std::ostream& flujo)
+        : flujo(flujo), anterior(flujo.rdbuf(salida.rdbuf())),
+          formato(flujo.flags()), precision(flujo.precision()), relleno(flujo.fill()) {}
+    ~CapturaFlujo() {
+        flujo.rdbuf(anterior);
+        flujo.flags(formato);
+        flujo.precision(precision);
+        flujo.fill(relleno);
+    }
+    std::string texto() const { return salida.str(); }
+};
+
+bool iniciarMotor(Motor& motor, int cantidad = 1, int semilla = 42) {
+    for (int i = 0; i < cantidad; i++) {
+        std::string nombre = "BOT" + std::to_string(i + 1), aviso;
+        if (!verificar(motor.RegistrarNombre(nombre, aviso), "registro del bot")) return false;
+    }
+    motor.Semilla = semilla;
+    motor.IniciarMultijugador();
+    motor.EnTurno = false;
+    return true;
+}
+
+void prepararEscena(Motor& motor) {
+    motor.EnemigosPendientes = ColaSpawn{};
+    DatosSpawn futuro{};
+    futuro.tick = 1000000; // Evita terminar el turno al eliminar el ultimo enemigo de la escena.
+    SpawnPtr dato = &futuro;
+    motor.EnemigosPendientes.Encolar(dato);
+    motor.TickOleada = 0;
+}
+
+NodoEnemigoPtr agregarEnemigo(Motor& motor, double radio, double angulo, int color,
+                             TipoEnemigo tipo = TipoEnemigo::Dron) {
+    Enemigo enemigo{};
+    enemigo.id = motor.SiguienteId++;
+    enemigo.tipo = tipo;
+    enemigo.r = radio;
+    enemigo.theta = angulo;
+    enemigo.color = color;
+    enemigo.vida = tipo == TipoEnemigo::Tanque ? 3 : 1;
+    enemigo.radio = tipo == TipoEnemigo::Mini ? 4 : tipo == TipoEnemigo::Divisor ? 8 : 6;
+    EnemigoPtr dato = &enemigo;
+    return motor.Enemigos.InsertarFinal(dato);
+}
+
+void agregarBala(Motor& motor, double radio, double angulo, int color) {
+    Bala bala{};
+    bala.x = 400 + std::cos(angulo) * radio;
+    bala.y = 310 - std::sin(angulo) * radio;
+    bala.color = color;
+    bala.duenio = 1;
+    BalaPtr dato = &bala;
+    motor.Balas.InsertarFinal(dato);
+}
+
+int contarEventos(Motor& motor, TipoEvento tipo) {
+    int cantidad = 0;
+    for (NodoEventoPtr nodo = motor.Bitacora.primero(); nodo; nodo = nodo->siguiente)
+        if (nodo->dato->tipo_evento == tipo) cantidad++;
+    return cantidad;
+}
+
+std::string reportesHistorial(Historial& historial) {
+    std::ostringstream datos;
+    datos << std::setprecision(17);
+    Estadisticas estadisticas;
+    Ranking ranking;
+    ranking.ConstruirDesdeHistorial(&historial);
+    for (NodoHistorialCSVPtr nodo = historial.primero(); nodo; nodo = nodo->siguiente) {
+        const HistorialCSV& r = *nodo->dato;
+        datos << r.id_partida << ' ' << r.semilla << ' ' << std::quoted(r.modo) << ' '
+              << std::quoted(r.jugador) << ' ' << r.es_bot << ' ' << r.posicion << ' '
+              << r.puntaje << ' ' << r.oleada << ' ' << r.disparos << ' ' << r.correctos << ' '
+              << r.erroneos << ' ' << r.combo_max << ' ' << r.pulsos << ' ' << r.dano_total << ' '
+              << r.ticks << ' ' << r.bajas_dron << ' ' << r.bajas_girador << ' '
+              << r.bajas_divisor << ' ' << r.bajas_mini << ' ' << r.bajas_tanque << ' '
+              << r.bajas_camaleon;
+        for (int valor : r.correctos_color) datos << ' ' << valor;
+        for (int valor : r.erroneos_color) datos << ' ' << valor;
+        for (int valor : r.bajas_color) datos << ' ' << valor;
+        for (int valor : r.dano_por_tipo) datos << ' ' << valor;
+        datos << '\n';
+        const ResumenHistorico resumen = estadisticas.calcularResumenHistorico(&historial, r.jugador);
+        datos << resumen.media << ' ' << resumen.mediana << ' ' << resumen.desviacion_estandar
+              << ' ' << resumen.precision_promedio << '\n';
+    }
+    for (NodoRegistroPtr nodo = ranking.primero(); nodo; nodo = nodo->siguiente)
+        datos << nodo->dato->Alias << ' ' << nodo->dato->puntaje << ' ' << nodo->dato->presicion << '\n';
+    {
+        CapturaFlujo captura(std::cout);
+        for (NodoRegistroPtr nodo = ranking.primero(); nodo; nodo = nodo->siguiente)
+            estadisticas.imprimirReporteHistorico(&historial, nodo->dato->Alias);
+        ranking.ImprimirTop();
+        datos << captura.texto();
+    }
+    return datos.str();
+}
+
+std::string reporteMotor(Motor& motor) {
+    motor.GuardarJugador();
+    Historial historial;
+    Persistencia persistencia;
+    for (int i = 0; i < motor.Registrados; i++) {
+        HistorialCSVPtr registro = new HistorialCSV{};
+        if (!persistencia.crearRegistro(&motor.DatosJugadores[i], 1, motor.Semilla, "script", *registro)) {
+            delete registro;
+            std::cerr << "No se pudo construir el reporte del motor.\n";
+            return {};
+        }
+        historial.InsertarFinal(registro);
+    }
+    std::ostringstream salida;
+    salida << std::setprecision(17) << reportesHistorial(historial)
+           << motor.Oleada << ' ' << motor.TickOleada << ' ' << motor.VidaNucleo << ' '
+           << motor.Puntaje << ' ' << motor.Combo << ' ' << motor.Angulo << ' '
+           << motor.CargaPulso << ' ' << motor.PulsoActivo << ' ' << motor.RadioPulso << '\n';
+    for (NodoEnemigoPtr nodo = motor.Enemigos.primero(); nodo; nodo = nodo->siguiente) {
+        const Enemigo& e = *nodo->dato;
+        salida << e.id << ' ' << static_cast<int>(e.tipo) << ' ' << e.r << ' ' << e.theta
+               << ' ' << e.omega << ' ' << e.color << ' ' << e.vida << ' ' << e.radio
+               << ' ' << e.ticksColor << '\n';
+    }
+    for (NodoBalaPtr nodo = motor.Balas.primero(); nodo; nodo = nodo->siguiente) {
+        const Bala& b = *nodo->dato;
+        salida << b.x << ' ' << b.y << ' ' << b.vx << ' ' << b.vy << ' '
+               << b.color << ' ' << b.duenio << '\n';
+    }
+    for (NodoEventoPtr nodo = motor.Bitacora.primero(); nodo; nodo = nodo->siguiente) {
+        const Evento& e = *nodo->dato;
+        salida << e.tick << ' ' << e.oleada << ' ' << e.jugador->Alias << ' '
+               << static_cast<int>(e.tipo_evento) << ' ' << static_cast<int>(e.tipo_enemigo)
+               << ' ' << e.color << ' ' << e.valor << '\n';
+    }
+    {
+        CapturaFlujo captura(std::cout);
+        Estadisticas estadisticas;
+        estadisticas.imprimirLineaTiempo(&motor.Bitacora, &motor.DatosJugadores[0]);
+        salida << captura.texto();
+    }
+    return salida.str();
+}
+
+bool pruebaP08() {
+    std::vector<AccionesTick> script;
+    for (int tick = 0; tick < 900; tick++) {
+        AccionesTick accion{};
+        accion.Izquierda = tick % 40 < 20;
+        accion.Derecha = !accion.Izquierda;
+        accion.color = (tick / 13) % 3;
+        accion.angulo = (tick % 360) * Pi / 180;
+        accion.Radio = 20;
+        script.push_back(accion);
+    }
+    Motor primero, segundo, otraSemilla;
+    if (!iniciarMotor(primero) || !iniciarMotor(segundo) || !iniciarMotor(otraSemilla, 1, 43)) return false;
+    primero.DatosPartida.posicion = segundo.DatosPartida.posicion = otraSemilla.DatosPartida.posicion = 1;
+    bool valido = true;
+    for (const AccionesTick& accion : script) {
+        primero.EnTurno = segundo.EnTurno = otraSemilla.EnTurno = false;
+        primero.AvanzarTick(accion);
+        segundo.AvanzarTick(accion);
+        otraSemilla.AvanzarTick(accion);
+        const std::string reporte = reporteMotor(primero);
+        if (!verificar(!reporte.empty() && reporte == reporteMotor(segundo),
+                       "P08: reportes identicos despues de cada accion con semilla y script iguales")) {
+            valido = false;
+            break;
+        }
+    }
+    valido &= verificar(primero.DatosPartida.disparos > 0 && primero.Bitacora.tamano() > 0,
+                        "P08: ejecucion no trivial con disparos y eventos");
+    otraSemilla.Semilla = primero.Semilla; // Compara resultados, no solo el campo semilla del reporte.
+    valido &= verificar(reporteMotor(primero) != reporteMotor(otraSemilla),
+                        "P08: control con otra semilla produce otro reporte");
+    return valido;
+}
+
+bool pruebaP09() {
+    Motor motor, control;
+    if (!iniciarMotor(motor) || !iniciarMotor(control)) return false;
+    prepararEscena(motor);
+    prepararEscena(control);
+    NodoEnemigoPtr objetivo = agregarEnemigo(motor, 200, 0, 0, TipoEnemigo::Tanque);
+    NodoEnemigoPtr referencia = agregarEnemigo(control, 200, 0, 0, TipoEnemigo::Tanque);
+    agregarBala(motor, 200, 0, 1);
+    motor.Combo = 5;
+    motor.AvanzarTick();
+    control.AvanzarTick();
+    return verificar(motor.Enemigos.tamano() == 1 && motor.Balas.vacia() &&
+                     std::fabs(objetivo->dato->r - referencia->dato->r - 9) < 0.000001 &&
+                     objetivo->dato->vida == 3 && motor.VidaNucleo == 100 && motor.Combo == 0 &&
+                     motor.DatosPartida.erroneos == 1 && motor.DatosPartida.erroneos_color[1] == 1 &&
+                     contarEventos(motor, TipoEvento::IMPACTO_ERRONEO) == 1,
+                     "P09: retroceso neto de 9, combo cero, vidas intactas e impacto registrado");
+}
+
+bool pruebaP10() {
+    bool valido = true;
+    for (int color = 0; color < 3; color++) {
+        Motor motor;
+        if (!iniciarMotor(motor)) return false;
+        prepararEscena(motor);
+        NodoEnemigoPtr anterior = agregarEnemigo(motor, 250, Pi, 0);
+        const int idPadre = agregarEnemigo(motor, 200, 0, color, TipoEnemigo::Divisor)->dato->id;
+        NodoEnemigoPtr siguiente = agregarEnemigo(motor, 250, Pi / 2, 1);
+        const int primerIdMini = motor.SiguienteId;
+        agregarBala(motor, 200, 0, color);
+        motor.AvanzarTick();
+        valido &= verificar(motor.Enemigos.Buscar(idPadre) == nullptr &&
+                            motor.Enemigos.tamano() == 4 && motor.DatosPartida.bajas_divisor == 1,
+                            "P10: elimina al Divisor e inserta exactamente dos enemigos");
+        NodoEnemigoPtr mini = anterior->siguiente;
+        for (int i = 0; i < 2; i++) {
+            if (!verificar(mini != nullptr && mini != siguiente, "P10: Mini en la posicion de lista del padre"))
+                return false;
+            valido &= verificar(mini->dato->tipo == TipoEnemigo::Mini &&
+                                mini->dato->id == primerIdMini + i &&
+                                std::fabs(mini->dato->r - (200 - 0.88 * 0.8)) < 0.000001 &&
+                                std::fabs(mini->dato->theta - (i == 0 ? -4 : 4) * Pi / 180) < 0.000001 &&
+                                mini->dato->color == (color + i + 1) % 3 &&
+                                mini->dato->vida == 1,
+                                "P10: Minis al radio del padre, con apertura angular y colores diferentes");
+            mini = mini->siguiente;
+        }
+        valido &= verificar(mini == siguiente && siguiente->anterior->anterior->anterior == anterior,
+                            "P10: conserva vecinos y enlaces de la lista");
+    }
+    return valido;
+}
+
+bool pruebaP11() {
+    bool valido = true;
+    for (int carga : {0, 99, 100}) {
+        Motor motor;
+        if (!iniciarMotor(motor)) return false;
+        prepararEscena(motor);
+        agregarEnemigo(motor, 32.88, 0, 0);
+        agregarEnemigo(motor, 32.88, Pi, 1);
+        NodoEnemigoPtr fuera = agregarEnemigo(motor, 60, Pi / 2, 2);
+        motor.CargaPulso = carga;
+        motor.ActivarPulso();
+        valido &= verificar(motor.PulsoActivo == (carga == 100) &&
+                            motor.CargaPulso == (carga == 100 ? 0 : carga) &&
+                            motor.DatosPartida.pulsos == (carga == 100 ? 1 : 0) &&
+                            contarEventos(motor, TipoEvento::PULSO) == (carga == 100 ? 1 : 0),
+                            "P11: solo carga 100 activa, consume y registra el pulso");
+        motor.AvanzarTick();
+        valido &= verificar(motor.Enemigos.tamano() == (carga == 100 ? 1 : 3) &&
+                            motor.Enemigos.Buscar(fuera->dato->id) == fuera &&
+                            motor.DatosPartida.bajas_dron == (carga == 100 ? 2 : 0) &&
+                            motor.Puntaje == (carga == 100 ? 200 : 0),
+                            "P11: bajas solo en la banda de la onda, independientemente del color");
+    }
+    return valido;
+}
+
+bool pruebaP12() {
+    struct Caso {
+        const char* nombre;
+        std::vector<int> entrada, orden;
+        double mediana;
+    };
+    const Caso casos[] = {
+        {"vacia", {}, {}, 0},
+        {"uno", {40}, {40}, 40},
+        {"dos ordenados", {10, 40}, {10, 40}, 25},
+        {"dos inversos", {40, 10}, {10, 40}, 25},
+        {"repetidos", {30, 10, 30, 40, 30}, {10, 30, 30, 30, 40}, 30},
+        {"repetidos par", {40, 30, 10, 30}, {10, 30, 30, 40}, 30}
+    };
+    bool valido = true;
+    for (const Caso& caso : casos) {
+        Historial historial;
+        for (int puntaje : caso.entrada) agregarPuntaje(historial, puntaje);
+        Estadisticas estadisticas;
+        const std::string mensaje = std::string("P12: orden, mediana e historial intacto: ") + caso.nombre;
+        valido &= verificar(estadisticas.calcularMediana(&historial, "Ana") == caso.mediana,
+                            mensaje.c_str());
+        NodoHistorialCSVPtr original = historial.primero();
+        for (int puntaje : caso.entrada) {
+            if (!verificar(original && original->dato->puntaje == puntaje, mensaje.c_str())) return false;
+            original = original->siguiente;
+        }
+        valido &= verificar(original == nullptr, mensaje.c_str());
+        NodoHistorialCSVPtr fuente = historial.primero();
+        NodoHistorialCSVPtr copia = historial.CopiarAListaAuxiliar(fuente);
+        historial.MergeSort(copia);
+        NodoHistorialCSVPtr nodo = copia;
+        for (int puntaje : caso.orden) {
+            valido &= verificar(nodo && nodo->puntaje == puntaje, mensaje.c_str());
+            if (nodo) nodo = nodo->siguiente;
+        }
+        valido &= verificar(nodo == nullptr, mensaje.c_str());
+        while (copia) {
+            NodoHistorialCSVPtr siguiente = copia->siguiente;
+            delete copia;
+            copia = siguiente;
+        }
+    }
+    return valido;
+}
+
+bool faseGuardarP13(const std::string& ruta) {
+    Jugador ana, luis;
+    std::strcpy(ana.Alias, "Ana");
+    std::strcpy(luis.Alias, "BOT Luis");
+    ana.posicion = 1;
+    luis.posicion = 2;
+    luis.isBot = true;
+    ana.puntaje = 300;
+    luis.puntaje = 100;
+    ana.numero_oleada = luis.numero_oleada = 10;
+    ana.correctos = 3;
+    ana.erroneos = 1;
+    ana.disparos = 8;
+    ana.combo_max = 3;
+    ana.pulsos = 1;
+    ana.ticks = 150;
+    ana.bajas_dron = ana.bajas_divisor = ana.bajas_mini = 1;
+    ana.bajas_girador = ana.bajas_tanque = ana.bajas_camaleon = 1;
+    for (int color = 0; color < 3; color++) {
+        ana.correctos_color[color] = 1;
+        ana.erroneos_color[color] = color == 0 ? 1 : 0;
+        ana.bajas_color[color] = 2;
+    }
+    for (int tipo = 0; tipo < 6; tipo++) {
+        ana.dano_por_tipo[tipo] = 10 + tipo;
+        ana.dano_total += 10 + tipo;
+    }
+    luis.correctos = 1;
+    luis.erroneos = 1;
+    JugadorPtr jugadores[] = {&ana, &luis};
+    Historial historial;
+    Persistencia persistencia;
+    if (!verificar(persistencia.guardarPartidaCompleta(ruta, jugadores, 2, 42, "turnos", &historial),
+                   "P13: guarda primera partida")) return false;
+    ana.puntaje = 100;
+    luis.puntaje = 300;
+    ana.posicion = 2;
+    luis.posicion = 1;
+    if (!verificar(persistencia.guardarPartidaCompleta(ruta, jugadores, 2, 43, "turnos", &historial),
+                   "P13: guarda segunda partida")) return false;
+    std::ofstream esperado(ruta + ".esperado");
+    esperado << reportesHistorial(historial);
+    esperado.close();
+    std::ofstream archivo(ruta, std::ios::app);
+    archivo << "fila,invalida\n";
+    archivo << "999999999999999999999,42,turnos,Ana\n";
+    archivo.close();
+    return verificar(static_cast<bool>(esperado) && static_cast<bool>(archivo), "P13: escribe fixtures");
+}
+
+bool faseCargarP13(const std::string& ruta) {
+    Historial historial;
+    Persistencia persistencia;
+    bool cargado;
+    std::string errores;
+    {
+        CapturaFlujo captura(std::cerr);
+        cargado = persistencia.cargarHistorial(ruta, &historial);
+        errores = captura.texto();
+    }
+    std::ifstream archivo(ruta + ".esperado");
+    const std::string esperado{std::istreambuf_iterator<char>(archivo), std::istreambuf_iterator<char>()};
+    return verificar(cargado && historial.tamano() == 4 && archivo.is_open() && !archivo.bad() &&
+                     !esperado.empty() && reportesHistorial(historial) == esperado,
+                     "P13: proceso nuevo conserva todos los campos, estadisticas y ranking") &&
+           verificar(errores.find("Fila mal formada en línea 6; se omite.") != std::string::npos &&
+                     errores.find("Fila mal formada en línea 7; se omite.") != std::string::npos,
+                     "P13: identifica las dos filas invalidas tras reiniciar");
+}
+
+bool ejecutarProceso(const char* ejecutable, const char* fase, const std::string& ruta) {
+    std::cout.flush();
+    std::cerr.flush();
+    const pid_t hijo = fork();
+    if (hijo < 0) {
+        std::perror("P13 fork");
+        return false;
+    }
+    if (hijo == 0) {
+        execlp(ejecutable, ejecutable, fase, ruta.c_str(), static_cast<char*>(nullptr));
+        std::perror("P13 exec");
+        _exit(127);
+    }
+    int estado = 0;
+    pid_t resultado;
+    do {
+        resultado = waitpid(hijo, &estado, 0);
+    } while (resultado == -1 && errno == EINTR);
+    if (resultado == -1) {
+        std::perror("P13 waitpid");
+        return false;
+    }
+    return verificar(WIFEXITED(estado) && WEXITSTATUS(estado) == 0, "P13: subproceso termina correctamente");
+}
+
+bool pruebaP13(const char* ejecutable, const std::string& ruta) {
+    const bool valido = ejecutarProceso(ejecutable, "--p13-guardar", ruta) &&
+                        ejecutarProceso(ejecutable, "--p13-cargar", ruta);
+    bool limpieza = true;
+    for (const std::string& archivo : {ruta, ruta + ".esperado"}) {
+        if (std::remove(archivo.c_str()) != 0 && errno != ENOENT) {
+            std::perror("P13 limpieza");
+            limpieza = false;
+        }
+    }
+    return valido && limpieza;
+}
+
+bool pruebaP14() {
+    Motor motor;
+    if (!iniciarMotor(motor, 4)) return false;
+    std::array<std::array<bool, 10>, 4> jugadas{};
+    int ticks = 0;
+    while (!motor.GameOver && !motor.Victoria && ticks < 200000) {
+        motor.EnTurno = false;
+        if (motor.Oleada >= 1 && motor.Oleada <= 10)
+            jugadas[motor.IndiceActual][motor.Oleada - 1] = true;
+        motor.AvanzarTick(Controlador::AccionesBot(motor));
+        ticks++;
+    }
+    int turnos = 0;
+    for (const auto& jugador : jugadas)
+        for (bool jugada : jugador) if (jugada) turnos++;
+    std::cout << "P14 escenario: " << ticks << " ticks, " << turnos
+              << "/40 turnos, " << contarEventos(motor, TipoEvento::FIN_OLEADA)
+              << "/40 oleadas completadas.\n";
+    return verificar(ticks < 200000 && motor.Victoria && motor.Oleada == 10 && turnos == 40 &&
+                     contarEventos(motor, TipoEvento::FIN_OLEADA) == 40 &&
+                     contarEventos(motor, TipoEvento::ELIMINACION) == 0,
+                     "P14: cuatro bots completan las diez oleadas sin alterar vidas ni reglas");
+}
+
+bool pruebaBotSinObjetivo() {
+    Motor motor;
+    if (!iniciarMotor(motor)) return false;
+    motor.ColorSeleccionado = 2;
+    motor.Angulo = 1.25f;
+    bool valido = true;
+    for (bool conEnemigos : {false, true}) {
+        if (conEnemigos) {
+            agregarEnemigo(motor, 100, 0, 0);
+            agregarEnemigo(motor, 99, Pi, 1);
+        }
+        const AccionesTick accion = Controlador::AccionesBot(motor);
+        valido &= verificar(accion.color == 2 && !accion.Izquierda && !accion.Derecha &&
+                            accion.angulo == motor.Angulo && motor.Angulo == 1.25f,
+                            "BOT01: sin elegibles conserva color y angulo, sin giro");
+    }
+    return valido;
+}
+
+bool pruebaBotObjetivo(bool empate) {
+    Motor motor;
+    if (!iniciarMotor(motor)) return false;
+    motor.Angulo = 0;
+    agregarEnemigo(motor, empate ? 150 : 220, Pi, 0);
+    const double angulo = empate ? Pi : Pi / 2;
+    if (!empate) agregarEnemigo(motor, 150, angulo, 1);
+    agregarEnemigo(motor, 150, 3 * Pi / 2, 2);
+    agregarEnemigo(motor, 100, 0, 2);
+    agregarEnemigo(motor, 99, 0, 2);
+    const AccionesTick accion = Controlador::AccionesBot(motor);
+    bool valido = verificar(accion.color == (empate ? 0 : 1) && accion.Izquierda && !accion.Derecha,
+                            "BOT02/BOT03: menor radio elegible; empate conserva el primero");
+    valido &= verificar(std::fabs(accion.angulo - angulo) < 0.000001,
+                        "BOT02/BOT03: devuelve el angulo del objetivo seleccionado");
+    return valido;
+}
+
+bool pruebaBotGiro(bool acumulado) {
+    bool valido = true;
+    for (bool inverso : {false, true}) {
+        Motor motor;
+        if (!iniciarMotor(motor)) return false;
+        motor.Angulo = static_cast<float>((inverso ? 1 : 359) * Pi / 180);
+        const double equivalente = (inverso ? 359 : 1) * Pi / 180;
+        NodoEnemigoPtr objetivo = agregarEnemigo(motor, 200, equivalente, 1);
+        const AccionesTick base = Controlador::AccionesBot(motor);
+        valido &= verificar(base.Izquierda == !inverso && base.Derecha == inverso,
+                            "BOT04/BOT05: giro corto 359 -> 1 izquierda, inverso derecha");
+        if (acumulado) {
+            for (int vueltas : {3, 7}) {
+                objetivo->dato->theta = equivalente + vueltas * 2 * Pi;
+                const AccionesTick accion = Controlador::AccionesBot(motor);
+                valido &= verificar(accion.Izquierda == base.Izquierda && accion.Derecha == base.Derecha,
+                                    "BOT05: varias vueltas conservan el giro del angulo equivalente");
+            }
+        }
+    }
+    return valido;
+}
+
+bool pruebaBotPulso(int cantidad, int carga) {
+    Motor motor;
+    if (!iniciarMotor(motor)) return false;
+    prepararEscena(motor);
+    for (int i = 0; i < cantidad; i++) agregarEnemigo(motor, 150, i * Pi / 3, i % 3);
+    agregarEnemigo(motor, 160, Pi, 0);
+    agregarEnemigo(motor, 200, Pi, 1);
+    motor.CargaPulso = carga;
+    const AccionesTick accion = Controlador::AccionesBot(motor);
+    const bool esperado = cantidad >= 5 && carga == 100;
+    bool valido = verificar(motor.PulsoActivo == esperado &&
+                            motor.CargaPulso == (esperado ? 0 : carga) &&
+                            motor.DatosPartida.pulsos == (esperado ? 1 : 0) &&
+                            contarEventos(motor, TipoEvento::PULSO) == (esperado ? 1 : 0),
+                            "BOT06/BOT07/BOT08: umbral estricto r < 160 y carga completa");
+    if (esperado) {
+        motor.AvanzarTick(accion);
+        Controlador::AccionesBot(motor);
+        valido &= verificar(motor.DatosPartida.pulsos == 1 && contarEventos(motor, TipoEvento::PULSO) == 1,
+                            "BOT07: no reactiva ni duplica el registro del pulso activo");
+    }
+    return valido;
+}
+
+bool pruebaBotOndaPersistente() {
+    Motor motor;
+    if (!iniciarMotor(motor)) return false;
+    prepararEscena(motor);
+    motor.CargaPulso = 100;
+    motor.ActivarPulso();
+    AccionesTick accion = Controlador::AccionesBot(motor);
+    bool valido = verificar(!accion.Pulso && motor.PulsoActivo, "BOT09: pulso activo con orden falsa");
+    float anterior = motor.RadioPulso;
+    for (int tick = 0; tick < 3; tick++) {
+        accion = Controlador::AccionesBot(motor);
+        accion.Pulso = false;
+        motor.AvanzarTick(accion);
+        valido &= verificar(motor.PulsoActivo && motor.RadioPulso == anterior + 12 &&
+                            motor.DatosPartida.pulsos == 1 && motor.CargaPulso == 0,
+                            "BOT09: orden falsa no cancela ni reinicia la onda y avanza 12 por tick");
+        anterior = motor.RadioPulso;
+    }
+    return valido;
+}
+
 void reportar(const char* nombre, bool resultado, int& fallidas) {
     std::cout << nombre << (resultado ? " PASS\n" : " FAIL\n");
     if (!resultado) fallidas++;
@@ -581,6 +1138,12 @@ void reportar(const char* nombre, bool resultado, int& fallidas) {
 }
 
 int main(int argc, char* argv[]) {
+    if (argc == 3 && std::string(argv[1]) == "--p13-guardar")
+        return faseGuardarP13(argv[2]) ? 0 : 1;
+    if (argc == 3 && std::string(argv[1]) == "--p13-cargar")
+        return faseCargarP13(argv[2]) ? 0 : 1;
+    if (argc == 2 && std::string(argv[1]) == "--p14")
+        return pruebaP14() ? 0 : 1;
     int fallidas = 0;
     reportar("P01", pruebaP01(), fallidas);
     reportar("P02", pruebaP02(), fallidas);
@@ -589,6 +1152,24 @@ int main(int argc, char* argv[]) {
     reportar("P05", pruebaP05(), fallidas);
     reportar("P06", pruebaP06(), fallidas);
     reportar("P07", pruebaP07(), fallidas);
+    reportar("P08", pruebaP08(), fallidas);
+    reportar("P09", pruebaP09(), fallidas);
+    reportar("P10", pruebaP10(), fallidas);
+    reportar("P11", pruebaP11(), fallidas);
+    reportar("P12", pruebaP12(), fallidas);
+    if (argc > 1) reportar("P13", pruebaP13(argv[0], std::string(argv[1]) + ".reinicio"), fallidas);
+    else std::cout << "P13 SKIP: requiere una ruta temporal de historial (make pruebas).\n";
+    reportar("P14/escenario", pruebaP14(), fallidas);
+    std::cout << "P14/Valgrind SKIP: ejecutar sh tests/p14_valgrind.sh para verificar memoria.\n";
+    reportar("BOT01", pruebaBotSinObjetivo(), fallidas);
+    reportar("BOT02", pruebaBotObjetivo(false), fallidas);
+    reportar("BOT03", pruebaBotObjetivo(true), fallidas);
+    reportar("BOT04", pruebaBotGiro(false), fallidas);
+    reportar("BOT05", pruebaBotGiro(true), fallidas);
+    reportar("BOT06", pruebaBotPulso(4, 100), fallidas);
+    reportar("BOT07", pruebaBotPulso(5, 100), fallidas);
+    reportar("BOT08", pruebaBotPulso(5, 99), fallidas);
+    reportar("BOT09", pruebaBotOndaPersistente(), fallidas);
     reportar("G01", pruebaGeneradorYOleada(), fallidas);
     reportar("E01", pruebaEstadisticas(), fallidas);
     reportar("E02", pruebaPrecisionYDano(), fallidas);
@@ -598,6 +1179,6 @@ int main(int argc, char* argv[]) {
     if (argc > 1) reportar("CSV02", pruebaGuardarParticipantes(std::string(argv[1]) + ".partida"), fallidas);
     if (argc > 1) reportar("CSV01", pruebaPersistencia(argv[1]), fallidas);
     if (argc > 1) reportar("CSV03", pruebaMigracionCSVAntiguo(std::string(argv[1]) + ".legacy"), fallidas);
-    std::cout << (fallidas == 0 ? "Todas las pruebas pasaron.\n" : "Hay pruebas fallidas.\n");
+    std::cout << (fallidas == 0 ? "Todas las pruebas ejecutadas pasaron.\n" : "Hay pruebas fallidas.\n");
     return fallidas == 0 ? 0 : 1;
 }
