@@ -5,8 +5,16 @@
 #include <allegro5/allegro_image.h>
 
 #include <cmath>       // para calcular las posiciones con seno y coseno
+#include <cstdlib>     // para convertir numeros de la linea de comandos
+#include <cstring>     // para comparar alias
+#include <ctime>       // para la semilla por defecto
+#include <iomanip>     // para tablas del reporte de lotes
 #include <iostream>    // Para mostrar mensajes en la consola
+#include <sstream>     // para separar los alias de --jugadores
 #include <string>      // para trabajar con textos
+
+#include "Estadisticas/Estadisticas.h"
+#include "Estadisticas/Ranking.h"
 
 #include "Estadisticas/Persistencia.h"
 #include "Vista/VistaAllegro.h"
@@ -41,11 +49,127 @@ Accion TraducirTecla(int tecla)
 }
 }
 
+namespace {
+struct OpcionesLotes {
+    bool activo = false;
+    std::string jugadores;
+    int semilla = -1; // -1 usa la hora actual
+    int oleadas = 10;
+};
+
+bool ParsearEntero(const char* texto, int& valor)
+{
+    char* fin = nullptr;
+    const long convertido = std::strtol(texto, &fin, 10);
+    if (fin == texto || *fin != '\0') return false;
+    valor = static_cast<int>(convertido);
+    return true;
+}
+
+void ImprimirReporteLotes(Motor& Juego, long long ticks)
+{
+    std::cout << "Resultado: " << (Juego.Victoria ? "victoria" : "derrota")
+              << ", oleada " << Juego.Oleada << " de " << Juego.TotalOleadas
+              << ", semilla " << Juego.Semilla << ", ticks " << ticks << "\n\n";
+    std::cout << "Posicion  Jugador                  Puntaje  Disparos  Correctos  Erroneos\n";
+    for (int indice = 0; indice < Juego.Registrados; indice++)
+    {
+        const Jugador& jugador = Juego.DatosJugadores[indice];
+        std::cout << std::setw(8) << jugador.posicion << "  "
+                  << std::left << std::setw(23) << jugador.Alias << std::right
+                  << std::setw(8) << jugador.puntaje << std::setw(10) << jugador.disparos
+                  << std::setw(11) << jugador.correctos << std::setw(10) << jugador.erroneos << '\n';
+    }
+    for (int indice = 0; indice < Juego.Registrados; indice++)
+        Estadisticas().imprimirLineaTiempo(&Juego.Bitacora, &Juego.DatosJugadores[indice]);
+}
+
+// Simula una partida sin ventana; los BOT usan Controlador::AccionesBot y los humanos no disparan.
+int EjecutarLotes(const OpcionesLotes& opciones, const std::string& archivoHistorial)
+{
+    if (opciones.jugadores.empty())
+    {
+        std::cerr << "--lotes requiere --jugadores.\n";
+        return 1;
+    }
+    if (opciones.oleadas < 1 || opciones.oleadas > 10)
+    {
+        std::cerr << "--oleadas debe estar entre 1 y 10.\n";
+        return 1;
+    }
+
+    Motor Juego;
+    Juego.Semilla = opciones.semilla >= 0 ? opciones.semilla : static_cast<int>(std::time(nullptr));
+    Juego.TotalOleadas = opciones.oleadas;
+
+    std::istringstream nombres(opciones.jugadores);
+    std::string alias;
+    while (std::getline(nombres, alias, ','))
+    {
+        std::string aviso;
+        if (!Juego.RegistrarNombre(alias, aviso))
+        {
+            std::cerr << "Jugador no valido: " << aviso << '\n';
+            return 1;
+        }
+    }
+    Juego.IniciarMultijugador();
+
+    // Un turno termina al completar una oleada.
+    const long long limiteTicks = 5000000;
+    long long ticks = 0;
+    while (!Juego.GameOver && !Juego.Victoria)
+    {
+        if (ticks++ >= limiteTicks)
+        {
+            std::cerr << "La simulacion supero el limite de ticks.\n";
+            return 1;
+        }
+
+        Juego.EnTurno = false;
+
+        if (Juego.DatosPartida.isBot)
+        {
+            Juego.AvanzarTick(Controlador::AccionesBot(Juego));
+            continue;
+        }
+
+        AccionesTick acciones{};
+        acciones.Izquierda = false;
+        acciones.Derecha = false;
+        acciones.Pulso = false;
+        acciones.color = Juego.ColorSeleccionado;
+        acciones.angulo = 3 * Pi / 2;
+        acciones.Radio = Juego.RadioPulso;
+        Juego.AvanzarTick(acciones);
+    }
+
+    Juego.CalcularPosiciones();
+    ImprimirReporteLotes(Juego, ticks);
+
+    Historial historial;
+    Persistencia archivos;
+    archivos.cargarHistorial(archivoHistorial, &historial);
+    JugadorPtr jugadores[6];
+    for (int indice = 0; indice < Juego.Registrados; indice++) jugadores[indice] = &Juego.DatosJugadores[indice];
+    if (!archivos.guardarPartidaCompleta(archivoHistorial, jugadores, Juego.Registrados, Juego.Semilla, "Lotes", &historial))
+    {
+        std::cerr << "No se pudo guardar la partida en el historial.\n";
+        return 1;
+    }
+    std::cout << "Partida guardada en " << archivoHistorial << '\n';
+    return 0;
+}
+} // namespace
+
 int main(int argc, char* argv[])
 {
     // Archivo donde se guardan los datos de las partidas
     std::string ArchivoHistorial = "historial.csv";
     std::string CarpetaCapturas;
+    std::string ModoReporte; // "estadisticas" o "ranking" para reportes por consola
+    OpcionesLotes Lotes;
+    bool UsaOpcionesLotes = false;
 
     // Se revisa si se enviaron opciones al ejecutar el programa
     for (int indice = 1; indice < argc; indice++)
@@ -58,11 +182,48 @@ int main(int argc, char* argv[])
         else if (argumento == "--capturas" && indice + 1 < argc)
             CarpetaCapturas = argv[++indice];
 
+        else if ((argumento == "--estadisticas" || argumento == "--ranking") && indice + 1 < argc)
+        {
+            ModoReporte = argumento.substr(2);
+            ArchivoHistorial = argv[++indice];
+        }
+
+        else if (argumento == "--lotes")
+            Lotes.activo = true;
+
+        else if (argumento == "--jugadores" && indice + 1 < argc)
+        {
+            Lotes.jugadores = argv[++indice];
+            UsaOpcionesLotes = true;
+        }
+
+        else if (argumento == "--semilla" && indice + 1 < argc)
+        {
+            if (!ParsearEntero(argv[++indice], Lotes.semilla)) { std::cerr << "Semilla no valida.\n"; return 1; }
+            UsaOpcionesLotes = true;
+        }
+
+        else if (argumento == "--oleadas" && indice + 1 < argc)
+        {
+            if (!ParsearEntero(argv[++indice], Lotes.oleadas)) { std::cerr << "Numero de oleadas no valido.\n"; return 1; }
+            UsaOpcionesLotes = true;
+        }
+
         else
         {
-            std::cerr << "Uso: faseorbital [--historial archivo.csv] [--capturas carpeta]\n";
+            std::cerr << "Uso: faseorbital [--historial archivo.csv] [--capturas carpeta]\n"
+                      << "     faseorbital --estadisticas archivo.csv\n"
+                      << "     faseorbital --ranking archivo.csv\n"
+                      << "     faseorbital --lotes --jugadores A,B,BOT1 [--semilla N] [--oleadas N]\n";
             return 1;
         }
+    }
+
+    if (Lotes.activo) return EjecutarLotes(Lotes, ArchivoHistorial);
+    if (UsaOpcionesLotes)
+    {
+        std::cerr << "--jugadores, --semilla y --oleadas requieren --lotes.\n";
+        return 1;
     }
 
     // se cargan los datos de partidas anteriores
@@ -74,6 +235,29 @@ int main(int argc, char* argv[])
 
     Ranking TablaRanking;
     TablaRanking.ConstruirDesdeHistorial(&HistorialJugadores);
+
+    // Los reportes por consola no necesitan Allegro
+    if (ModoReporte == "ranking")
+    {
+        TablaRanking.ImprimirTop(10);
+        return 0;
+    }
+
+    if (ModoReporte == "estadisticas")
+    {
+        Estadisticas EstadisticasHistoricas;
+        Historial* historialReporte = &HistorialJugadores;
+        for (NodoHistorialCSVPtr nodo = historialReporte->primero(); nodo != nullptr; nodo = nodo->siguiente)
+        {
+            bool repetido = false;
+            for (NodoHistorialCSVPtr anterior = historialReporte->primero(); anterior != nodo; anterior = anterior->siguiente)
+            {
+                if (std::strcmp(anterior->dato->jugador, nodo->dato->jugador) == 0) repetido = true;
+            }
+            if (!repetido) EstadisticasHistoricas.imprimirReporteHistorico(historialReporte, nodo->dato->jugador);
+        }
+        return 0;
+    }
 
     VistaAllegro Reportes; // para mostrar el ranking y las estadisticas
     int PasoCaptura = 0; // controla las capturas de pantalla

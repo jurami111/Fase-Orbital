@@ -5,8 +5,24 @@
 El juego en Allegro incluye registro de nombres unicos, partidas por turnos de
 hasta seis jugadores, oleadas deterministas, seis tipos de enemigo, puntaje/combo,
 pulso, daño al nucleo, bitacora, estadisticas historicas y ranking. Los alias
-`BOT...` se marcan en el historial, pero aun no tienen control automatico.
-Scripts de acciones y ejecucion por lotes tampoco estan implementados.
+`BOT...` se marcan en el historial, y tienen control automatico.
+
+## Ejecucion Por Lotes
+
+Simula partidas sin ventana y guarda el resultado en el historial (`historial.csv`
+por defecto, o el indicado con `--historial`):
+
+```sh
+./build/faseorbital --lotes --jugadores Ana,BOT1 --semilla 42 --oleadas 10
+```
+
+- `--jugadores` lista los alias separados por comas; los `BOT...` usan control automatico.
+- `--semilla` fija la semilla; sin ella se usa la hora actual.
+- `--oleadas` va de 1 a 10.
+- Los jugadores humanos no disparan en lotes: solo los `BOT...` juegan.
+- La partida se guarda con modo `Lotes`, igual que el guardado de la GUI.
+
+Pendiente: scripts de acciones para jugadores humanos.
 
 ## Compilar Y Ejecutar En macOS
 
@@ -45,8 +61,14 @@ Este CSV contiene datos sinteticos para pruebas, no evidencia de partidas jugada
 make pruebas
 ```
 
-La aplicacion principal usa Allegro; no acepta --estadisticas o --ranking por
-consola. Un archivo ausente o con encabezado incorrecto produce un aviso; las
+Los reportes por consola no abren ventana:
+
+```sh
+./build/faseorbital --estadisticas historial.csv
+./build/faseorbital --ranking historial.csv
+```
+
+Un archivo ausente o con encabezado incorrecto produce un aviso; las
 filas invalidas se informan y omiten. Abrir reportes no escribe el historial.
 
 ## Partida Y Persistencia

@@ -1,6 +1,5 @@
 #include "Vista/Controlador.h"
 #include "Motor/Motor.h"
-#include <iostream>
 
 
 void Controlador::Presionar(Accion accion, Motor& Juego, bool EnMenu, bool EnNombre)
@@ -77,9 +76,7 @@ AccionesTick Controlador::AccionesBot(Motor& estadoMotor)
     NodoEnemigoPtr actual = estadoMotor.Enemigos.primero();
     double EnemigoaAtacar = 99999999;
     int EnemigoColor = -1;
-    double EnemigoAngulo = -1000;
     int cantidadEnemigos = 0;
-    double diferencia = 0;
 
     while (actual != nullptr)
     {

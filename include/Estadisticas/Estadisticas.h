@@ -45,6 +45,8 @@ class Estadisticas {
         ResumenHistorico calcularResumenHistorico(Historial* historial, const std::string& alias);
         double calcularPrecisionHistorica(Historial* historial, const std::string& alias);
         double calcularPrecisionColorHistorica(Historial* historial, const std::string& alias, int color);
+        int calcularColorMejorPrecisionHistorica(Historial* historial, const std::string& alias);
+        double calcularEficienciaDisparo(Historial* historial, const std::string& alias);
         TipoEnemigo obtenerEnemigoMasDanino(Historial* historial, const std::string& alias);
         ResultadoHistograma calcularHistograma(Historial* historial, const std::string& alias);
         void imprimirReporteHistorico(Historial* historial, const std::string& alias);

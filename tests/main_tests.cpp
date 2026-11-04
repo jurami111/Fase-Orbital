@@ -1056,10 +1056,13 @@ bool pruebaBotObjetivo(bool empate) {
     agregarEnemigo(motor, 100, 0, 2);
     agregarEnemigo(motor, 99, 0, 2);
     const AccionesTick accion = Controlador::AccionesBot(motor);
-    bool valido = verificar(accion.color == (empate ? 0 : 1) && accion.Izquierda && !accion.Derecha,
+    bool valido = verificar(accion.color == (empate ? 0 : 1),
                             "BOT02/BOT03: menor radio elegible; empate conserva el primero");
     valido &= verificar(std::fabs(accion.angulo - angulo) < 0.000001,
                         "BOT02/BOT03: devuelve el angulo del objetivo seleccionado");
+    motor.AvanzarTick(accion);
+    valido &= verificar(std::fabs(motor.Angulo - 0.10472) < 0.0001,
+                        "BOT02/BOT03: un tick gira 6 grados hacia el objetivo");
     return valido;
 }
 
@@ -1072,14 +1075,17 @@ bool pruebaBotGiro(bool acumulado) {
         const double equivalente = (inverso ? 359 : 1) * Pi / 180;
         NodoEnemigoPtr objetivo = agregarEnemigo(motor, 200, equivalente, 1);
         const AccionesTick base = Controlador::AccionesBot(motor);
-        valido &= verificar(base.Izquierda == !inverso && base.Derecha == inverso,
-                            "BOT04/BOT05: giro corto 359 -> 1 izquierda, inverso derecha");
+        motor.AvanzarTick(base);
+        valido &= verificar(std::fabs(motor.Angulo - equivalente) < 0.0001,
+                            "BOT04/BOT05: giro corto 359 -> 1 llega al angulo en un tick");
         if (acumulado) {
             for (int vueltas : {3, 7}) {
+                motor.Angulo = static_cast<float>((inverso ? 1 : 359) * Pi / 180);
                 objetivo->dato->theta = equivalente + vueltas * 2 * Pi;
                 const AccionesTick accion = Controlador::AccionesBot(motor);
-                valido &= verificar(accion.Izquierda == base.Izquierda && accion.Derecha == base.Derecha,
-                                    "BOT05: varias vueltas conservan el giro del angulo equivalente");
+                motor.AvanzarTick(accion);
+                valido &= verificar(std::fabs(motor.Angulo - equivalente) < 0.0001,
+                                    "BOT05: varias vueltas llegan al mismo angulo final");
             }
         }
     }

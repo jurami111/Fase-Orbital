@@ -68,7 +68,7 @@ public:
     bool GameOver = false; // indica si perdimos la partida
     bool Victoria = false; // indica si se gana la partida
     int VidaNucleo = 100; // Empieza con 100
-    const int TotalOleadas = 10; // Hay que superar diez oleadas
+    int TotalOleadas = 10; // Hay que superar diez oleadas (--lotes puede reducirlo)
 
     Motor();
     void ReiniciarPartida(Jugador& Datos, int& Semilla);

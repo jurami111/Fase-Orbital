@@ -155,6 +155,31 @@ double Estadisticas::calcularPrecisionColorHistorica(Historial* historial, const
     return impactos == 0 ? 0.0 : 100.0 * correctos / impactos;
 }
 
+int Estadisticas::calcularColorMejorPrecisionHistorica(Historial* historial, const std::string& alias) {
+    int mejorColor = -1;
+    double mejorPrecision = -1.0;
+    for (int color = 0; color < 3; color++) {
+        const double precision = calcularPrecisionColorHistorica(historial, alias, color);
+        if (precision > mejorPrecision) {
+            mejorPrecision = precision;
+            mejorColor = color;
+        }
+    }
+    return mejorColor;
+}
+
+double Estadisticas::calcularEficienciaDisparo(Historial* historial, const std::string& alias) {
+    if (historial == nullptr) return 0.0;
+    long long correctos = 0;
+    long long disparos = 0;
+    for (NodoHistorialCSVPtr nodo = historial->primero(); nodo != nullptr; nodo = nodo->siguiente) {
+        if (alias != nodo->dato->jugador) continue;
+        correctos += nodo->dato->correctos;
+        disparos += nodo->dato->disparos;
+    }
+    return disparos == 0 ? 0.0 : 100.0 * correctos / disparos;
+}
+
 TipoEnemigo Estadisticas::obtenerEnemigoMasDanino(Historial* historial, const std::string& alias) {
     if (historial == nullptr) return TipoEnemigo::Dron;
     long long danoPorTipo[6]{};
@@ -300,6 +325,10 @@ void Estadisticas::imprimirReporteHistorico(Historial* historial, const std::str
                   << calcularPrecisionColorHistorica(historial, alias, color) << "%  Bajas: "
                   << resumen.bajas_color[color] << '\n';
     }
+    const int mejorColor = calcularColorMejorPrecisionHistorica(historial, alias);
+    std::cout << "Mejor precision por color: "
+              << (mejorColor < 0 ? "sin impactos" : colores[mejorColor]) << '\n';
+    std::cout << "Eficiencia de disparo: " << calcularEficienciaDisparo(historial, alias) << "%\n";
     static const char* tipos[] = {"Dron", "Girador", "Divisor", "Mini", "Tanque", "Camaleon"};
     const int indiceDanino = indiceEnemigo(obtenerEnemigoMasDanino(historial, alias));
     long long danoTotal = 0;
