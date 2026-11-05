@@ -5,6 +5,9 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 const char* const Persistencia::FORMATO_CSV =
     "id_partida,semilla,modo,jugador,es_bot,posicion,puntaje,oleada,disparos,"
@@ -370,11 +373,19 @@ bool Persistencia::guardarPartidaCompleta(const std::string& ruta, JugadorPtr ju
     entrada.close();
     for (int indice = 0; indice < cantidad; indice++) escribirRegistroCSV(salida, registros[indice]);
     salida.close();
-    if (!salida || std::rename(temporal.c_str(), ruta.c_str()) != 0) {
-        std::remove(temporal.c_str());
-        std::cerr << "No se pudo confirmar el historial completo.\n";
-        return false;
-    }
+
+    #ifdef _WIN32
+        // En Windows reemplazamos el archivo anterior
+        if (!salida || !MoveFileExA(temporal.c_str(), ruta.c_str(),
+                                MOVEFILE_REPLACE_EXISTING)) {
+    #else
+        // En Linux usamos rename
+        if (!salida || std::rename(temporal.c_str(), ruta.c_str()) != 0) {
+    #endif
+            std::remove(temporal.c_str());
+            std::cerr << "No se pudo confirmar el historial completo\n";
+            return false;
+        }
 
     for (int indice = 0; indice < cantidad; indice++) {
         HistorialCSVPtr copia = new HistorialCSV(registros[indice]);

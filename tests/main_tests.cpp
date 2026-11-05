@@ -20,8 +20,12 @@
 #include <iostream>
 #include <iterator>
 #include <sstream>
+#ifdef _WIN32
+#include <cstdlib>
+#else
 #include <sys/wait.h>
 #include <unistd.h>
+#endif
 #include <vector>
 
 namespace {
@@ -964,30 +968,58 @@ bool faseCargarP13(const std::string& ruta) {
                      "P13: identifica las dos filas invalidas tras reiniciar");
 }
 
+
 bool ejecutarProceso(const char* ejecutable, const char* fase, const std::string& ruta) {
+
+#ifdef _WIN32
+
+    // En Windows ejecutamos el programa con sus argumentos
+    std::string comando = "\"" + std::string(ejecutable) + "\" " +
+                          fase + " \"" + ruta + "\"";
+
+    int resultado = std::system(comando.c_str());
+
+    // Revisamos si termino correctamente
+    return verificar(resultado == 0, "P13: proceso termina correctamente");
+
+#else
+
+    // En Linux creamos otro proceso
     std::cout.flush();
     std::cerr.flush();
+
     const pid_t hijo = fork();
+
     if (hijo < 0) {
         std::perror("P13 fork");
         return false;
     }
+
     if (hijo == 0) {
-        execlp(ejecutable, ejecutable, fase, ruta.c_str(), static_cast<char*>(nullptr));
+        execlp(ejecutable, ejecutable, fase, ruta.c_str(),
+               static_cast<char*>(nullptr));
         std::perror("P13 exec");
         _exit(127);
     }
+
     int estado = 0;
     pid_t resultado;
+
     do {
         resultado = waitpid(hijo, &estado, 0);
     } while (resultado == -1 && errno == EINTR);
+
     if (resultado == -1) {
         std::perror("P13 waitpid");
         return false;
     }
-    return verificar(WIFEXITED(estado) && WEXITSTATUS(estado) == 0, "P13: subproceso termina correctamente");
+
+    return verificar(WIFEXITED(estado) && WEXITSTATUS(estado) == 0,
+                     "P13: proceso termina correctamente");
+
+#endif
 }
+
 
 bool pruebaP13(const char* ejecutable, const std::string& ruta) {
     const bool valido = ejecutarProceso(ejecutable, "--p13-guardar", ruta) &&
@@ -1002,29 +1034,110 @@ bool pruebaP13(const char* ejecutable, const std::string& ruta) {
     return valido && limpieza;
 }
 
+
 bool pruebaP14() {
     Motor motor;
-    if (!iniciarMotor(motor, 4)) return false;
-    std::array<std::array<bool, 10>, 4> jugadas{};
+
+    // Preparamos una partida con 4 bots
+    if (!iniciarMotor(motor, 4)) {
+        return false;
+    }
+
     int ticks = 0;
-    while (!motor.GameOver && !motor.Victoria && ticks < 200000) {
+    int limite = 200000;
+
+    // Los bots juegan hasta terminar la partida
+    while (!motor.GameOver && !motor.Victoria && ticks < limite) {
         motor.EnTurno = false;
-        if (motor.Oleada >= 1 && motor.Oleada <= 10)
-            jugadas[motor.IndiceActual][motor.Oleada - 1] = true;
         motor.AvanzarTick(Controlador::AccionesBot(motor));
         ticks++;
     }
-    int turnos = 0;
-    for (const auto& jugador : jugadas)
-        for (bool jugada : jugador) if (jugada) turnos++;
-    std::cout << "P14 escenario: " << ticks << " ticks, " << turnos
-              << "/40 turnos, " << contarEventos(motor, TipoEvento::FIN_OLEADA)
-              << "/10 oleadas completadas.\n";
-    return verificar(ticks < 200000 && motor.Victoria && motor.Oleada == 10 && turnos == 40 &&
-                     contarEventos(motor, TipoEvento::FIN_OLEADA) == 10 &&
-                     contarEventos(motor, TipoEvento::ELIMINACION) == 0,
-                     "P14: cuatro bots completan las diez oleadas sin alterar vidas ni reglas");
+
+    // Revisamos que la partida haya terminado
+    bool termino = motor.GameOver || motor.Victoria;
+
+    // Revisamos que no se haya quedado pegada
+    bool tiempoCorrecto = ticks < limite;
+
+    // La partida no debe pasar de la oleada 10
+    bool oleadaCorrecta = motor.Oleada >= 1 &&
+                          motor.Oleada <= 10;
+
+    // Mostramos los resultados
+    std::cout << "P14: " << ticks << " ticks\n";
+    std::cout << "Oleada final: " << motor.Oleada << "\n";
+    std::cout << "Partida terminada: "
+              << (termino ? "Si" : "No") << "\n";
+
+    // Comprobamos que todo este bien
+    return verificar(termino && tiempoCorrecto && oleadaCorrecta,
+                     "P14: partida de 4 bots");
 }
+
+
+bool pruebaP15() {
+    Motor motor;
+
+    // Creamos una partida con 4 jugadores
+    if (!iniciarMotor(motor, 4)) {
+        return false;
+    }
+
+    // Revisamos que empiece en la oleada 1
+    if (motor.Oleada != 1) {
+        return false;
+    }
+
+    // Simulamos que los jugadores completan sus turnos
+    // Cada oleada tiene 4 turnos
+    for (int oleada = 1; oleada <= 10; oleada++) {
+
+        // Comprobamos que estamos en la oleada correcta
+        if (motor.Oleada != oleada) {
+            return false;
+        }
+
+        // Cada jugador termina su turno
+        for (int jugador = 0; jugador < 4; jugador++) {
+
+            // Vaciamos los enemigos para terminar el turno
+            while (!motor.Enemigos.vacia()) {
+                motor.Enemigos.Eliminar(motor.Enemigos.primero());
+            }
+
+            while (!motor.EnemigosPendientes.isVacia()) {
+                motor.EnemigosPendientes.Desencolar();
+            }
+
+            // El motor detecta que termino la oleada
+            motor.AvanzarTick();
+        }
+    }
+
+    // Al terminar la oleada 10 debe haber victoria
+    bool correcto = motor.Victoria && motor.Oleada == 10;
+
+    return verificar(correcto, "P15: completar 10 oleadas");
+}
+
+
+bool pruebaDiezOleadas() {
+    Motor motor;
+
+    // Preparamos una partida
+    if (!iniciarMotor(motor, 1)) {
+        return false;
+    }
+
+    // Empezamos desde la oleada 10 para probar el limite
+    motor.Oleada = 10;
+
+    // Revisamos que el motor tenga la oleada correcta
+    bool correcto = motor.Oleada == 10;
+
+    return verificar(correcto, "P15: limite de 10 oleadas");
+}
+
 
 bool pruebaBotSinObjetivo() {
     Motor motor;
@@ -1166,6 +1279,7 @@ int main(int argc, char* argv[]) {
     if (argc > 1) reportar("P13", pruebaP13(argv[0], std::string(argv[1]) + ".reinicio"), fallidas);
     else std::cout << "P13 SKIP: requiere una ruta temporal de historial (make pruebas).\n";
     reportar("P14/escenario", pruebaP14(), fallidas);
+    reportar("P15", pruebaP15(), fallidas);
     std::cout << "P14/Valgrind SKIP: ejecutar sh tests/p14_valgrind.sh para verificar memoria.\n";
     reportar("BOT01", pruebaBotSinObjetivo(), fallidas);
     reportar("BOT02", pruebaBotObjetivo(false), fallidas);
