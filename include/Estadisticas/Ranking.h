@@ -1,3 +1,7 @@
+#pragma once
+
+#include "Historial.h"
+
 typedef struct RegistroRanking {
     char Alias[25];
     int puntaje;
@@ -10,7 +14,6 @@ using NodoRegistroPtr = NodoRegistro*;
 struct NodoRegistro {
     RegistroRankingPtr dato;
     NodoRegistroPtr siguiente;
-    NodoRegistroPtr anterior;
 };
 
 class Ranking {
@@ -21,6 +24,9 @@ class Ranking {
     public:
         Ranking(); //Constructor
         ~Ranking();//Destructor
+        void Limpiar();
+        void ConstruirDesdeHistorial(Historial* historial);
+        void ImprimirTop(int limite = 10);
 
         // Prohibir copia (Regla de tres)
         Ranking(const Ranking&) = delete;
