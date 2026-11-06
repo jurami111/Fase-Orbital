@@ -436,7 +436,7 @@ int main(int argc, char* argv[])
             if ((Juego.GameOver || Juego.Victoria) && !EnMenu)
             {
                 // Boton para volver a jugar
-                if (x >= 280 && x <= 520 && y >= 320 && y <= 365)
+                if (x >= 280 && x <= 520 && y >= 390 && y <= 435)
                 {
                     Juego.ReiniciarDesdeVictoria();
                     EnMenu = false;
@@ -445,7 +445,7 @@ int main(int argc, char* argv[])
                 }
 
                 // Boton para regresar al menu principal
-                else if (x >= 280 && x <= 520 && y >= 385 && y <= 430)
+                else if (x >= 280 && x <= 520 && y >= 455 && y <= 500)
                 {
                     EnMenu = true; // Regresamos al menu
                     Juego.EnPausa = false; // Se quitan la pausa
@@ -610,7 +610,7 @@ int main(int argc, char* argv[])
 
             if (!Juego.DatosPartida.isBot)
             {
-                if (Juego.EnTurno)
+                if (Juego.EnTurno && !Juego.GameOver && !Juego.Victoria && !EnMenu)
                 {
                 al_clear_to_color(Fondo);
                 al_draw_text(Fuente, Colores[0], 400, 170, ALLEGRO_ALIGN_CENTRE, "SIGUIENTE TURNO");
@@ -921,70 +921,38 @@ int main(int argc, char* argv[])
                 al_draw_text( Fuente, Crema, 400, 278, ALLEGRO_ALIGN_CENTRE, "Seguir" );
             }
 
-            // Se muestra la pantalla de derrota cuando un enemigo llega al nucleo
-            if (Juego.GameOver)
+            // Resultado final de la partida
+            if (Juego.GameOver || Juego.Victoria)
             {
-                // Se cubre el juego con un fondo oscuro
-                al_draw_filled_rectangle( 0, 0, 800, 600, al_map_rgb(20, 17, 43) );
+                al_draw_filled_rectangle(0, 0, 800, 600, Fondo);
+                ALLEGRO_COLOR ColorFinal = Juego.Victoria ? Colores[0] : Colores[1];
+                al_draw_text(Fuente, ColorFinal, 400, 75, ALLEGRO_ALIGN_CENTRE,
+                             Juego.Victoria ? "VICTORIA" : "GAME OVER");
 
-                // Titulo de derrota
-                al_draw_text( Fuente, Colores[1], 400, 190, ALLEGRO_ALIGN_CENTRE, "GAME OVER" );
+                if (Juego.GameOver)
+                    al_draw_text(Fuente, Crema, 400, 115, ALLEGRO_ALIGN_CENTRE, "Todos fueron eliminados");
+                else
+                    al_draw_text(Fuente, Crema, 400, 115, ALLEGRO_ALIGN_CENTRE, "Resultado de la partida");
 
-                // se muestra cuantos puntos conseguimos
-                std::string PuntosFinales = "Puntos: " + std::to_string(Juego.Puntaje);
+                // La posicion ya se calcula al guardar la partida
+                for (int Posicion = 1; Posicion <= Juego.Registrados; Posicion++)
+                {
+                    for (int i = 0; i < Juego.Registrados; i++)
+                    {
+                        if (Juego.DatosJugadores[i].posicion != Posicion) continue;
+                        const Jugador& Actual = Juego.DatosJugadores[i];
+                        std::string Linea = std::to_string(Posicion) + ". " + Actual.Alias +
+                            "  -  " + std::to_string(Actual.puntaje) + " puntos";
+                        al_draw_text(Fuente, Colores[(Posicion - 1) % 3], 400,
+                                     160 + (Posicion - 1) * 28, ALLEGRO_ALIGN_CENTRE, Linea.c_str());
+                    }
+                }
 
-                al_draw_text( Fuente, Crema, 400, 260, ALLEGRO_ALIGN_CENTRE, PuntosFinales.c_str() );
-
-                
-                // Boton para intentar otra vez
-                al_draw_filled_rectangle( 280, 320, 520, 365, Colores[1] );
-
-                // Texto del boton
-                al_draw_text( Fuente, Fondo, 400, 330, ALLEGRO_ALIGN_CENTRE, "Reintentar" );
-
-                // Boton para regresar al menu
-                al_draw_filled_rectangle( 280, 385, 520, 430, Morado );
-
-                // Se dibuja el borde del boton
-                al_draw_rectangle( 280, 385, 520, 430, Colores[1], 2 );
-
-                // Texto del segundo boton
-                al_draw_text( Fuente, Crema, 400, 395, ALLEGRO_ALIGN_CENTRE, "Menu principal" );
-
-            }
-
-            // Se muestra la pantalla de victoria al superar todas las oleadas
-            if (Juego.Victoria)
-            {
-                // Fondo para que solo se vea el resultado
-                al_draw_filled_rectangle( 0, 0, 800, 600, al_map_rgb(20, 17, 43) );
-
-                // Titulo de victoria
-                al_draw_text( Fuente, Colores[0], 400, 190, ALLEGRO_ALIGN_CENTRE, "VICTORIA" );
-
-                al_draw_text( Fuente, Crema, 400, 250, ALLEGRO_ALIGN_CENTRE, "Completaste las 5 oleadas" );
-
-                // Puntaje final
-                std::string PuntosFinales = "Puntos: " + std::to_string(Juego.Puntaje);
-
-                al_draw_text( Fuente, Colores[2], 400, 300, ALLEGRO_ALIGN_CENTRE, PuntosFinales.c_str() );
-
-                
-                // boton para comenzar otra partida
-                al_draw_filled_rectangle( 280, 320, 520, 365, Colores[0] );
-
-                // texto del boton
-                al_draw_text( Fuente, Fondo, 400, 330, ALLEGRO_ALIGN_CENTRE, "Reintentar" );
-
-                // Boton para regresar al menu
-                al_draw_filled_rectangle( 280, 385, 520, 430, Morado );
-
-                // borde del boton
-                al_draw_rectangle( 280, 385, 520, 430, Colores[0], 2 );
-
-                // texto del segundo boton
-                al_draw_text( Fuente, Crema, 400, 395, ALLEGRO_ALIGN_CENTRE, "Menu principal" );
-
+                al_draw_filled_rectangle(280, 390, 520, 435, ColorFinal);
+                al_draw_text(Fuente, Fondo, 400, 400, ALLEGRO_ALIGN_CENTRE, "Reintentar");
+                al_draw_filled_rectangle(280, 455, 520, 500, Morado);
+                al_draw_rectangle(280, 455, 520, 500, ColorFinal, 2);
+                al_draw_text(Fuente, Crema, 400, 465, ALLEGRO_ALIGN_CENTRE, "Menu principal");
             }
 
             // se muestra en pantalla todo lo que se dibuja

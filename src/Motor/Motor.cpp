@@ -264,7 +264,10 @@ void Motor::TerminarTurno(bool Eliminado)
         DatosJugadores[IndiceActual].posicion = Ronda.tamano();
         Ronda.EliminarActual(Horario);
     }
-    else Ronda.AvanzarJugador(Horario);
+    else if (TurnosJugados + 1 < JugadoresTurno)
+    {
+        Ronda.AvanzarJugador(Horario);
+    }
 
     TurnosJugados++;
     if (TurnosJugados >= JugadoresTurno)
@@ -282,8 +285,6 @@ void Motor::TerminarTurno(bool Eliminado)
         JugadoresTurno = Ronda.tamano();
         TurnosJugados = 0;
         ColaOriginal = GeneradorOleadas.Generar(Semilla, Oleada);
-        // la siguiente ronda empieza con el ultimo que jugo
-        if (!Eliminado) Ronda.AvanzarJugador(Horario);
     }
     if (Ronda.tamano() == 0)
     {
@@ -373,7 +374,7 @@ void Motor::AvanzarTick()
             // se toma los datos del enemigo actual
             Enemigo* Actual = EnemigoActual->dato;
 
-            // velocidad de cada tipo de enemigo
+            // Las primeras oleadas van mas despacio para practicar
             float Velocidad = static_cast<float>((0.8 + 0.08 * Oleada) * FactorVelocidad(Actual->tipo));
             Actual->r -= Velocidad;
 
