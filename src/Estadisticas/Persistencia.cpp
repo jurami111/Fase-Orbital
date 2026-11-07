@@ -8,6 +8,8 @@
 #ifdef _WIN32
 #include <windows.h>
 #endif
+#include <filesystem>
+#include <system_error>
 
 const char* const Persistencia::FORMATO_CSV =
     "id_partida,semilla,modo,jugador,es_bot,posicion,puntaje,oleada,disparos,"
@@ -178,14 +180,35 @@ bool migrarCSVAntiguo(const std::string& ruta) {
         }
         escribirRegistroCSV(salida, registro);
     }
+    
     entrada.close();
     salida.close();
-    if (!salida || std::rename(temporal.c_str(), ruta.c_str()) != 0) {
+
+    if (!salida) {
         std::remove(temporal.c_str());
         return false;
     }
+
+    #ifdef _WIN32
+        bool reemplazado = MoveFileExA(
+            temporal.c_str(),
+            ruta.c_str(),
+            MOVEFILE_REPLACE_EXISTING
+        ) != 0;
+    #else
+        bool reemplazado = std::rename(
+            temporal.c_str(),
+            ruta.c_str()
+        ) == 0;
+    #endif
+
+    if (!reemplazado) {
+        std::remove(temporal.c_str());
+        return false;
+    }
+
     return true;
-}
+    }
 }
 
 bool Persistencia::cargarHistorial(const std::string& ruta, Historial* historial) {
