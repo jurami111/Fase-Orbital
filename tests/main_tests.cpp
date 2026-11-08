@@ -974,8 +974,8 @@ bool ejecutarProceso(const char* ejecutable, const char* fase, const std::string
 #ifdef _WIN32
 
     // En Windows ejecutamos el programa con sus argumentos
-    std::string comando = "\"" + std::string(ejecutable) + "\" " +
-                          fase + " \"" + ruta + "\"";
+    std::string comando = "cmd /C \"\"" + std::string(ejecutable) +
+                      "\" " + fase + " \"" + ruta + "\"\"";
 
     int resultado = std::system(comando.c_str());
 
