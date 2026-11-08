@@ -1,169 +1,160 @@
 # Fase Orbital
 
-Proyecto 1A de Estructuras de Datos — videojuego arcade desarrollado en C++ con Allegro.
+Proyecto 1A de Estructuras de Datos. Videojuego arcade hecho en C++ con Allegro 5.
 
 ## 1. Descripción
 
-La nave gira alrededor de un núcleo y dispara automáticamente contra enemigos cian, magenta y ámbar. El jugador selecciona la dirección y el color de disparo. Incluye seis tipos de enemigos (Dron, Girador, Divisor, Mini, Tanque y Camaleón), oleadas deterministas, combos, pulso, partidas por turnos de uno a seis participantes humanos o bots, bitácora de eventos, historial, estadísticas y ranking.
+En el juego, una nave gira alrededor de un núcleo y dispara automáticamente a enemigos de tres colores: cian, magenta y ámbar. El jugador puede cambiar la dirección de la nave y escoger el color de los disparos.
 
-Las estructuras de datos principales están implementadas con nodos y punteros propios: listas de enemigos y balas, cola de aparición, ronda circular de jugadores, bitácora, historial y ranking.
+Hay seis tipos de enemigos: Dron, Girador, Divisor, Mini, Tanque y Camaleón. También hay oleadas, combos, un pulso especial y partidas por turnos con hasta seis jugadores, que pueden ser personas o bots.
 
-## 2. Compilación y ejecución en Windows (entorno verificado)
+El juego guarda los resultados de las partidas y permite ver estadísticas y un ranking. Para organizar los datos se utilizaron listas, colas y otras estructuras hechas con nodos y punteros.
 
-**Requisitos:** Windows x64, Visual Studio 2022 con compilador de C++ y Allegro 5.2.11.3 instalado mediante NuGet. La ruta usada a continuación corresponde a la instalación NuGet en `%USERPROFILE%`; si Allegro está en otra carpeta, hay que ajustarla.
+## 2. Ejecutar en Windows
+
+Si el juego ya está compilado, solo hay que abrir `faseorbital.exe` desde la carpeta del proyecto. Es importante mantener las DLL de Allegro y la carpeta `sonidos` junto con los demás archivos necesarios.
+
+Para compilarlo desde el código se necesita Windows de 64 bits, Visual Studio 2022 con C++ y Allegro 5.2.11.3 instalado mediante NuGet.
 
 1. Abrir **x64 Native Tools Command Prompt for VS 2022**.
-2. Situarse en la carpeta raíz del proyecto, que contiene `src`, `include` y `README.md`:
+2. Entrar a la carpeta del proyecto:
 
 ```bat
 cd /d C:\ruta\a\Fase-Orbital
 ```
 
-3. Ejecutar el siguiente comando completo (es una sola instrucción; las líneas que se muestran aquí son solo ajuste visual del editor):
+3. Copiar y ejecutar este comando completo:
 
 ```bat
 cl /nologo /EHsc /std:c++17 /I include /I include\Estructuras /I include\Motor /I include\Estadisticas /I include\Vista /I "%USERPROFILE%\.nuget\packages\allegro\5.2.11.3\build\native\include" src\main.cpp src\Vista\VistaAllegro.cpp src\Vista\Controlador.cpp src\Estructuras\*.cpp src\Motor\*.cpp src\Estadisticas\*.cpp /Fe:faseorbital.exe /link /LIBPATH:"%USERPROFILE%\.nuget\packages\allegro\5.2.11.3\build\native\v143\x64\lib" allegro.lib allegro_font.lib allegro_ttf.lib allegro_primitives.lib allegro_image.lib allegro_audio.lib allegro_acodec.lib
 ```
 
-4. Ejecutar el juego:
+4. Abrir el juego:
 
 ```bat
 faseorbital.exe
 ```
 
-Las DLL de Allegro requeridas deben estar junto al ejecutable o en una carpeta incluida en `PATH`. Si aparece un error de DLL faltante, revisar la instalación de Allegro y la carpeta `build\native\v143\x64\bin` del paquete, según corresponda; no descargar DLL de sitios externos.
+## 3. Controles
 
-**Verificado en Windows:** el comando anterior compiló el juego y se abrió el menú principal. También se comprobó el modo por lotes.
+- **Flechas izquierda y derecha:** cambiar la dirección de la nave.
+- **1, 2 y 3:** seleccionar el color cian, magenta o ámbar.
+- **Espacio:** usar el pulso cuando esté disponible.
+- **P:** pausar o continuar la partida.
+- **Mouse:** escoger las opciones del menú.
+- **Esc:** regresar al menú o salir, según la pantalla.
 
-## 3. Controles y modos de juego
+Desde el menú se puede jugar, ver las estadísticas, consultar el ranking o salir. Antes de empezar se pueden agregar hasta seis jugadores. Los nombres que comienzan con `BOT`, como `BOT1`, se controlan automáticamente.
 
-- **Flechas izquierda/derecha:** cambiar la dirección de la nave.
-- **1, 2, 3:** seleccionar cian, magenta o ámbar.
-- **Espacio:** activar el pulso cuando esté cargado.
-- **P:** pausar o reanudar.
-- **Mouse:** seleccionar opciones del menú.
+## 4. Partidas automáticas
 
-Desde el menú principal se puede **Jugar**, consultar **Ranking**, consultar **Estadísticas** o **Salir**. En el registro de jugadores se agregan hasta seis participantes. Los nombres que comienzan con `BOT` (por ejemplo, `BOT1`) corresponden a participantes automáticos.
+También se pueden hacer partidas con bots desde la consola, sin abrir la ventana del juego.
 
-## 4. Simulación automática (modo por lotes)
-
-Permite simular partidas desde la consola sin abrir la ventana gráfica. Los participantes `BOT...` actúan automáticamente. Los jugadores humanos no reciben controles interactivos en este modo.
-
-**Windows — comando verificado:**
+En Windows:
 
 ```bat
 faseorbital.exe --lotes --jugadores BOT1,BOT2 --semilla 42 --oleadas 10
 ```
 
-**macOS — comando equivalente, pendiente de comprobar en una Mac:**
+- `--jugadores`: nombres de los participantes separados por comas.
+- `--semilla`: número que permite repetir una simulación.
+- `--oleadas`: cantidad máxima de oleadas, entre 1 y 10.
+- `--historial`: permite guardar los resultados en otro archivo CSV.
 
-```sh
-./build/faseorbital --lotes --jugadores BOT1,BOT2 --semilla 42 --oleadas 10
-```
+Al terminar, los resultados se guardan en `historial.csv`, a menos que se indique otro archivo.
 
-- `--jugadores`: alias separados por comas.
-- `--semilla`: valor para reproducir una simulación; si se omite, se utiliza la hora actual.
-- `--oleadas`: cantidad máxima de oleadas solicitadas, de 1 a 10. La partida puede terminar antes por derrota.
-- `--historial`: permite indicar otro archivo CSV de historial; si se omite, se usa `historial.csv`.
+## 5. Historial, estadísticas y ranking
 
-La consola muestra resultado, oleada alcanzada, puntajes y línea de tiempo de los jugadores. Al terminar, guarda la partida en `historial.csv` (o en el archivo indicado).
+El archivo `historial.csv` guarda los resultados de las partidas. Desde el menú se pueden consultar las estadísticas de los jugadores y el ranking.
 
-**Verificado:** con semilla 42 y dos bots, la simulación terminó en derrota en la oleada 7 de 10 y confirmó `Partida guardada en historial.csv`.
-
-## 5. Estadísticas, ranking e historial
-
-Los resultados se almacenan en `historial.csv`. La interfaz permite consultar estadísticas por jugador, historial y clasificación histórica.
-
-El programa también incluye reportes sin interfaz gráfica. **Estos comandos están implementados, pero falta comprobar su ejecución en el ejecutable final de Windows:**
+También se pueden ver desde la consola de Windows:
 
 ```bat
 faseorbital.exe --estadisticas historial.csv
 faseorbital.exe --ranking historial.csv
 ```
 
-Para consultar un historial distinto sin modificar el principal:
+Para abrir el juego usando el archivo de prueba:
 
 ```bat
 faseorbital.exe --historial tests\historial_prueba.csv
 ```
 
-`tests/historial_prueba.csv` contiene datos sintéticos de prueba; no debe presentarse como evidencia de partidas reales.
+El archivo `tests/historial_prueba.csv` contiene datos de ejemplo para realizar pruebas.
 
 ## 6. Pruebas
 
-En Windows, desde la raíz del proyecto:
+En Windows, desde la carpeta principal del proyecto, se pueden ejecutar:
 
 ```bat
 Pruebas.exe historial_pruebas.csv
 PruebasASan.exe historial_asan.csv
 ```
 
-Ambos ejecutables de pruebas fueron utilizados y reportaron `Todas las pruebas ejecutadas pasaron`. La ejecución de AddressSanitizer no mostró un diagnóstico de error en la salida compartida. La comprobación mediante Valgrind no se ejecutó en Windows y figura como `SKIP`.
+Estas pruebas permiten revisar el funcionamiento de las estructuras de datos y el guardado de información.
 
-Para repetir las pruebas desde el código en macOS (o en un entorno con `make` y compilador compatible):
+## 7. Compilar y ejecutar en macOS
 
-```sh
-make pruebas
-```
-
-El objetivo `pruebas` del Makefile compila `build/pruebas` y lo ejecuta con un historial temporal.
-
-## 7. Compilación y ejecución en macOS (instrucciones conservadas, no verificadas aquí)
-
-Instalar las dependencias mediante Homebrew:
+Primero, instalar Allegro y las herramientas necesarias:
 
 ```sh
 brew install allegro pkgconf
 ```
 
-Desde la raíz del repositorio:
+Después, desde la carpeta del proyecto:
 
 ```sh
 make
 ./build/faseorbital
 ```
 
-Alternativamente:
+También se puede utilizar:
 
 ```sh
 make ejecutar
 ```
 
-El Makefile utiliza C++17 y `pkg-config` para localizar Allegro. La disponibilidad de sus complementos y la compilación deben verificarse en el equipo macOS de destino.
+Para ejecutar las pruebas:
 
-Para los reportes de consola en macOS:
+```sh
+make pruebas
+```
+
+Para simular una partida con bots:
+
+```sh
+./build/faseorbital --lotes --jugadores BOT1,BOT2 --semilla 42 --oleadas 10
+```
+
+Para consultar las estadísticas y el ranking:
 
 ```sh
 ./build/faseorbital --estadisticas historial.csv
 ./build/faseorbital --ranking historial.csv
 ```
 
-## 8. Persistencia y detalles técnicos
+## 8. Capturas del juego
 
-La partida registra resultados de todos los participantes, incluidos los eliminados, mediante `Persistencia::guardarPartidaCompleta`. El guardado valida los registros y utiliza un archivo temporal antes de reemplazar el CSV. Los reportes pueden consultar el historial sin reescribirlo.
+El programa permite guardar imágenes de algunas pantallas del juego.
 
-El formato actual del CSV contiene 36 columnas: 21 originales y 15 adicionales para impactos, bajas por color y daño por tipo. El sistema admite CSV antiguos de 21 columnas y los migra al formato actual al guardar una partida nueva, conservando los registros anteriores y asignando cero a las métricas que no existían.
-
-La bitácora registra bajas, impactos erróneos, daños, choques, pulsos, fin de oleada y eliminaciones. `Estadisticas::calcularResumenHistorico` devuelve el resumen por valor; la variante `generarResumenHistorico` devuelve un puntero que debe liberarse con `delete`. Las funciones de resumen y línea de tiempo evitan duplicar los eventos de daño.
-
-## 9. Capturas automáticas de verificación (función disponible; pendiente de probar en Windows)
-
-Desde la carpeta raíz, crear el directorio de salida y ejecutar:
+En Windows:
 
 ```bat
 mkdir build\capturas
 faseorbital.exe --capturas build\capturas --historial tests\historial_prueba.csv
 ```
 
-La función está diseñada para producir `principal.png`, `jugar.png`, `estadisticas.png` y `ranking.png`, sin alterar el historial de prueba. En macOS, el comando equivalente es:
+En macOS:
 
 ```sh
 mkdir -p build/capturas
 ./build/faseorbital --capturas build/capturas --historial tests/historial_prueba.csv
 ```
 
-## 10. Archivos de entrega
+Se generan cuatro imágenes: `principal.png`, `jugar.png`, `estadisticas.png` y `ranking.png`.
 
-Conservar `src/`, `include/`, `tests/`, `Makefile`, `README.md`, los recursos necesarios, `faseorbital.exe`, las DLL requeridas para Windows, el programa de pruebas, el historial solicitado, el manual de usuario, la documentación técnica y el video de defensa. Evitar entregar ejecutables duplicados de verificación como si fueran versiones principales.
+## 9. Archivos del proyecto
 
-**Nota:** los comandos de Windows indicados como verificados se probaron en el entorno de desarrollo; los reportes y las capturas automáticas requieren las comprobaciones finales descritas arriba. Las instrucciones de macOS se conservaron del proyecto, pero no se ejecutaron en una Mac durante esta revisión.
+El proyecto incluye el código en `src` e `include`, las pruebas, los sonidos, el archivo `Makefile`, el historial de partidas y este README.
+
+Para ejecutar la versión de Windows sin compilar, se debe conservar `faseorbital.exe` junto con las DLL y los recursos que necesita el juego.
