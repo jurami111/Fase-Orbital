@@ -302,17 +302,21 @@ void Motor::AvanzarTick()
     {
         DatosPartida.ticks++;
 
-        // se mueve la nave por su orbita
+        // se mueve la nave con las flechas o con el mouse
         if (Izquierda)
         {
             Angulo += static_cast<float>(6.0 * Pi / 180.0);
         }
-
-        if (Derecha)
+        else if (Derecha)
         {
             Angulo -= static_cast<float>(6.0 * Pi / 180.0);
         }
-         Angulo = std::fmod(Angulo + static_cast<float>(2.0 * Pi), static_cast<float>(2.0 * Pi));
+        else if (UsarMouse)
+        {
+            Angulo = ActualizarAngulo(AnguloMouse);
+        }
+
+        Angulo = std::fmod(Angulo + static_cast<float>(2.0 * Pi),static_cast<float>(2.0 * Pi));
 
         // La oleada se revisa despues de las colisiones
         // Asi tambien se puede comprobar si ya se gana
@@ -735,6 +739,7 @@ void Motor::ReiniciarDesdeVictoria()
 
     Izquierda = false; // se deja de mover la nave
     Derecha = false;
+    UsarMouse = false;
     EnPausa = false;
 
     GameOver = false; // se quitan la derrota

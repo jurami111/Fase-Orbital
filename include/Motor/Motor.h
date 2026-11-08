@@ -36,6 +36,8 @@ public:
     bool EnPausa = false;
     bool Izquierda = false;
     bool Derecha = false;
+    bool UsarMouse = false;
+    double AnguloMouse = 0; 
 
     // Posicion de la nave
     float Angulo = static_cast<float>(3.0 * Pi / 2.0); // 270 grados iniciales

@@ -408,6 +408,24 @@ int main(int argc, char* argv[])
             PasoCaptura++;
         }
 
+        // se mueve la nave hacia donde apunta el mouse
+        if (Evento.type == ALLEGRO_EVENT_MOUSE_AXES)
+        {
+            if (!EnMenu && !EnNombre && !Juego.EnTurno &&
+                !Juego.EnPausa && !Juego.GameOver && !Juego.Victoria &&
+                !Juego.DatosPartida.isBot)
+            {
+                double DiferenciaX = Evento.mouse.x - 400;
+                double DiferenciaY = 310 - Evento.mouse.y;
+
+                if (DiferenciaX != 0 || DiferenciaY != 0)
+                {
+                    Juego.AnguloMouse = std::atan2(DiferenciaY, DiferenciaX);
+                    Juego.UsarMouse = true;
+                }
+            }
+        }
+
         // Se revisa si se hizo clic con el mouse
         if (Evento.type == ALLEGRO_EVENT_MOUSE_BUTTON_DOWN && Evento.mouse.button == 1)
         {
@@ -499,9 +517,16 @@ int main(int argc, char* argv[])
                 }
             }
 
-            // se evita que la nave siga girando al usar el mouse
+            // se quita el movimiento de las flechas al hacer clic
             Juego.Izquierda = false;
             Juego.Derecha = false;
+            Juego.UsarMouse = false;
+
+            if (EnMenu || EnNombre || Juego.GameOver || Juego.Victoria)
+            {
+                Juego.UsarMouse = false;
+            }
+
             if (!CarpetaCapturas.empty() && PasoCaptura == 12 && EnNombre &&
                 Juego.Registrados == 1 && NombreJugador == "aNA") {
                 CapturaDuplicadoRechazado = true;
@@ -517,6 +542,13 @@ int main(int argc, char* argv[])
         // se revisa cuando se presiona alguna tecla
         if (Evento.type == ALLEGRO_EVENT_KEY_DOWN)
         {
+            // al usar las flechas se deja de seguir el mouse
+            if (Evento.keyboard.keycode == ALLEGRO_KEY_LEFT ||
+                Evento.keyboard.keycode == ALLEGRO_KEY_RIGHT)
+            {
+                Juego.UsarMouse = false;
+            }
+
             // ESC permite regresar al menu o cerrar el programa
             if (Evento.keyboard.keycode == ALLEGRO_KEY_ESCAPE)
             {
